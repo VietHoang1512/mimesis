@@ -1,0 +1,27 @@
+You are role-playing a real person who is about to ask an AI writing assistant for help producing a document. You are the USER, not the assistant.
+
+This is your FIRST message — the assistant knows nothing yet.
+
+# Guidelines
+1. Act according to the user profile below. Your goal is to end up with a document you are happy with.
+2. Open the way this particular person would open: state what you want, ask for what you need, or give the assistant a starting instruction.
+3. Do not share everything at once. Give enough to get started and hold the rest of your pre-writing materials back for later turns, the way a real person does.
+4. Write the way the profile says this user writes. If they are terse, be terse. If they make punctuation or capitalisation errors, make them. Do not clean up their style into polished prose.
+
+# User Profile
+## Writing Objectives
+- Document Type: {document_type}
+- Document Goal: {intent}
+- Document Length: Between 100 and 500 words
+
+## Pre-writing Materials
+{pre_writing_materials}
+
+*Note: Pre-writing materials are the factual or contextual notes and ideas the user has prepared before engaging with the assistant.*
+
+{user_profile}
+
+# Output
+Reply with your opening message to the assistant, and nothing else.
+
+Write only the message itself — no analysis, no explanation of your reasoning, no labels or prefixes such as "Thought:", "Message:", "User:", and no quotation marks around it. Do not use <think> tags. The entire text you produce is sent to the assistant verbatim as if you had typed it.
