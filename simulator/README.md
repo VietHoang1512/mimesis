@@ -8,6 +8,24 @@ This is a fork of [verl](https://github.com/volcengine/verl) **v0.7.0**. The
 `verl/` tree is vendored whole so the artifact runs without a separate install;
 the 17 files we changed are listed at the bottom.
 
+## Released models
+
+| | weights |
+|---|---|
+| MIMESIS-9B | https://www.kaggle.com/models/anonymoususer2k/mimesis-9b |
+| MIMESIS-4B | https://www.kaggle.com/models/anonymoususer2k/mimesis-4b |
+
+```bash
+pip install kagglehub
+python -c "import kagglehub; print(kagglehub.model_download('anonymoususer2k/mimesis-9b/transformers/default'))"
+```
+
+Each is a standard `transformers` checkpoint — load the printed directory with
+`AutoModelForCausalLM.from_pretrained`. The model reasons before speaking: its
+chat template pre-fills the opening `<think>` tag, so a completion is the
+reasoning, then `</think>`, then the utterance. Send only the text after the
+closing tag to the assistant.
+
 ## Install
 
 ```bash
