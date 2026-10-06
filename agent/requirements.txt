@@ -1,0 +1,26 @@
+# requirements.txt records the full set of dependencies for development
+accelerate
+codetiming
+datasets
+dill
+flash-attn
+hydra-core
+liger-kernel
+numpy
+pandas
+peft
+pyarrow>=19.0.0
+pybind11
+pylatexenc
+pre-commit
+ray[default]
+tensordict<=0.6.2
+torchdata
+transformers
+vllm==0.9.1
+sglang[srt]==0.4.7
+wandb
+packaging>=20.0
+uvicorn
+torch_memory_saver
+fastapi

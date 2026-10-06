@@ -1,0 +1,600 @@
+diff --git a/gyms/IntentionGym/intentiongym/config.py b/gyms/IntentionGym/intentiongym/config.py
+index 456d0c4..fc89945 100644
+--- a/gyms/IntentionGym/intentiongym/config.py
++++ b/gyms/IntentionGym/intentiongym/config.py
+@@ -43,6 +43,25 @@ class IntentionGymConfig:
+     data_source: Optional[Union[str, List[str]]] = None  # task ID(s) or None for random
+     
+     def __post_init__(self):
++
++        # Seed override for multi-seed runs. Every gym pins seed=42 by default
++        # (TravelGym/TemplateGym leave it None, i.e. unseeded), and both the
++        # agent (--temperature 0) and the simulator (temperature 0.0 in this
++        # config) decode greedily -- so WITHOUT changing this a re-run reproduces
++        # the previous one and "seeds" would measure floating-point noise.
++        _s = os.environ.get("USERRL_GYM_SEED")
++        if _s:
++            self.seed = int(_s)
++
++        # Simulator-call timeout. The 10s default predates thinking simulators and
++        # slower hosted routes: a large hosted reasoning model answers in 14-17s
++        # and a fast hosted model in ~6s, so a 10s ceiling fails the slower one
++        # on EVERY call in this gym. The failure is silent -- eval.py's rollout()
++        # catches the TimeoutError and returns [0], which is indistinguishable
++        # in the results from an agent that genuinely scored nothing.
++        _t = os.environ.get("USERRL_SIM_TIMEOUT")
++        if _t:
++            self.timeout = type(self.timeout)(float(_t))
+         # Auto-load API key from environment if not provided
+         if not self.api_key:
+             self.api_key = os.getenv("OPENAI_API_KEY", "")
+diff --git a/gyms/PersuadeGym/persuadegym/config.py b/gyms/PersuadeGym/persuadegym/config.py
+index 213ddb7..e25bb81 100644
+--- a/gyms/PersuadeGym/persuadegym/config.py
++++ b/gyms/PersuadeGym/persuadegym/config.py
+@@ -32,6 +32,25 @@ class PersuadeGymConfig:
+     data_source: Optional[Union[str, List[str]]] = None  # statement ID(s) or None for random
+     
+     def __post_init__(self):
++
++        # Seed override for multi-seed runs. Every gym pins seed=42 by default
++        # (TravelGym/TemplateGym leave it None, i.e. unseeded), and both the
++        # agent (--temperature 0) and the simulator (temperature 0.0 in this
++        # config) decode greedily -- so WITHOUT changing this a re-run reproduces
++        # the previous one and "seeds" would measure floating-point noise.
++        _s = os.environ.get("USERRL_GYM_SEED")
++        if _s:
++            self.seed = int(_s)
++
++        # Simulator-call timeout. The 10s default predates thinking simulators and
++        # slower hosted routes: a large hosted reasoning model answers in 14-17s
++        # and a fast hosted model in ~6s, so a 10s ceiling fails the slower one
++        # on EVERY call in this gym. The failure is silent -- eval.py's rollout()
++        # catches the TimeoutError and returns [0], which is indistinguishable
++        # in the results from an agent that genuinely scored nothing.
++        _t = os.environ.get("USERRL_SIM_TIMEOUT")
++        if _t:
++            self.timeout = type(self.timeout)(float(_t))
+         # Auto-load API key from environment if not provided
+         if not self.api_key:
+             self.api_key = os.getenv("OPENAI_API_KEY", "")
+diff --git a/gyms/PersuadeGym/persuadegym/env/prompts.py b/gyms/PersuadeGym/persuadegym/env/prompts.py
+index d1a13ea..023d21d 100644
+--- a/gyms/PersuadeGym/persuadegym/env/prompts.py
++++ b/gyms/PersuadeGym/persuadegym/env/prompts.py
+@@ -1,5 +1,6 @@
+ from openai import OpenAI, AsyncOpenAI
+ from typing import Dict, Any, Tuple, List
++import json
+ from ast import literal_eval
+ import time
+ import asyncio
+@@ -83,14 +84,67 @@ def build_response_prompt(action_str: str, statement_data: Dict[str, Any], conve
+     return messages
+ 
+ 
++
++def _coerce_model_json(response_text, keys=()):
++    """Parse model output that is *meant* to be JSON but often is not.
++
++    An earlier run still failed 283 times after json.loads+literal_eval were added,
++    because the model emits shapes that defeat BOTH:
++      * curly quotes as delimiters -- {\u2018response\u2019: \u2018...\u2019}
++        -> "invalid character '\u2019' (U+2019)"
++      * single-quoted dicts whose values contain apostrophes -- {'response':
++        'I'm glad'} -> "unterminated string literal" / "invalid syntax"
++    Every failure was swallowed into a canned reply worth 0.0 reward, so the gym
++    scored zero while the simulator was answering perfectly well.
++
++    Four tiers, cheapest first. The last one does not parse structure at all --
++    it pulls the named keys out with a regex, which survives any quoting the
++    model invents.
++    """
++    import json as _json
++    import re as _re
++    from ast import literal_eval as _le
++
++    t = (response_text or "").strip()
++    if t.startswith("```"):
++        t = t.split("\n", 1)[-1] if "\n" in t else t[3:]
++    if t.endswith("```"):
++        t = t[:-3]
++    # Normalise typographic punctuation to ASCII. Safe here: this is a data
++    # payload, not prose we must preserve byte-for-byte.
++    t = (t.replace("\u2018", "'").replace("\u2019", "'")
++          .replace("\u201c", '"').replace("\u201d", '"').strip())
++    a, b = t.find("{"), t.rfind("}")
++    if a != -1 and b > a:
++        t = t[a:b + 1]
++
++    for attempt in (lambda: _json.loads(t), lambda: _le(t)):
++        try:
++            out = attempt()
++            if isinstance(out, dict):
++                return out
++        except Exception:
++            pass
++
++    # Last resort: lift each key's value directly. Tolerates unescaped quotes,
++    # apostrophes and newlines inside the value because it anchors on the NEXT
++    # key or the closing brace rather than on a quote character.
++    if keys:
++        got, ks = {}, list(keys)
++        for k in ks:
++            others = "|".join(_re.escape(o) for o in ks if o != k)
++            stop = rf'(?=\s*,\s*["\']?(?:{others})["\']?\s*:|\s*\}}\s*$)' if others else r'(?=\s*\}}\s*$)'
++            m = _re.search(rf'["\']?{_re.escape(k)}["\']?\s*:\s*["\']?(.*?)["\']?\s*{stop}',
++                           t, _re.S)
++            if m:
++                got[k] = m.group(1).strip()
++        if got:
++            return got
++    raise ValueError(f"could not parse model output as JSON: {t[:120]!r}")
++
+ def parse_llm_response(response_text: str) -> Tuple[str, str, Dict[str, Any]]:
+     """Parse LLM response to extract feedback, stance, and full JSON."""
+-    if response_text.startswith("```json"):
+-        response_text = response_text[7:]
+-    if response_text.endswith("```"):
+-        response_text = response_text[:-3]
+-        
+-    response_json = literal_eval(response_text)
++    response_json = _coerce_model_json(response_text, keys=('response', 'stance'))
+     
+     feedback = response_json["response"]
+     stance = response_json["stance"]
+diff --git a/gyms/SearchGym/searchgym/config.py b/gyms/SearchGym/searchgym/config.py
+index 25746cd..dab3dc9 100644
+--- a/gyms/SearchGym/searchgym/config.py
++++ b/gyms/SearchGym/searchgym/config.py
+@@ -53,6 +53,25 @@ class SearchGymConfig:
+     data_source: Optional[Union[str, List[str]]] = None  # question IDs or None for random
+     
+     def __post_init__(self):
++
++        # Seed override for multi-seed runs. Every gym pins seed=42 by default
++        # (TravelGym/TemplateGym leave it None, i.e. unseeded), and both the
++        # agent (--temperature 0) and the simulator (temperature 0.0 in this
++        # config) decode greedily -- so WITHOUT changing this a re-run reproduces
++        # the previous one and "seeds" would measure floating-point noise.
++        _s = os.environ.get("USERRL_GYM_SEED")
++        if _s:
++            self.seed = int(_s)
++
++        # Simulator-call timeout. The 10s default predates thinking simulators and
++        # slower hosted routes: a large hosted reasoning model answers in 14-17s
++        # and a fast hosted model in ~6s, so a 10s ceiling fails the slower one
++        # on EVERY call in this gym. The failure is silent -- eval.py's rollout()
++        # catches the TimeoutError and returns [0], which is indistinguishable
++        # in the results from an agent that genuinely scored nothing.
++        _t = os.environ.get("USERRL_SIM_TIMEOUT")
++        if _t:
++            self.timeout = type(self.timeout)(float(_t))
+         # Auto-load Serper API key from secret.json or environment if not provided
+         if not self.serper_api_key:
+             self.serper_api_key = os.getenv("SERPER_API_KEY", "")
+diff --git a/gyms/SearchGym/searchgym/env/prompts.py b/gyms/SearchGym/searchgym/env/prompts.py
+index 90cb975..82710cf 100644
+--- a/gyms/SearchGym/searchgym/env/prompts.py
++++ b/gyms/SearchGym/searchgym/env/prompts.py
+@@ -67,6 +67,64 @@ ANSWER_USER = """### Question
+ 
+ 
+ 
++
++def _coerce_model_json(response_text, keys=()):
++    """Parse model output that is *meant* to be JSON but often is not.
++
++    An earlier run still failed 283 times after json.loads+literal_eval were added,
++    because the model emits shapes that defeat BOTH:
++      * curly quotes as delimiters -- {\u2018response\u2019: \u2018...\u2019}
++        -> "invalid character '\u2019' (U+2019)"
++      * single-quoted dicts whose values contain apostrophes -- {'response':
++        'I'm glad'} -> "unterminated string literal" / "invalid syntax"
++    Every failure was swallowed into a canned reply worth 0.0 reward, so the gym
++    scored zero while the simulator was answering perfectly well.
++
++    Four tiers, cheapest first. The last one does not parse structure at all --
++    it pulls the named keys out with a regex, which survives any quoting the
++    model invents.
++    """
++    import json as _json
++    import re as _re
++    from ast import literal_eval as _le
++
++    t = (response_text or "").strip()
++    if t.startswith("```"):
++        t = t.split("\n", 1)[-1] if "\n" in t else t[3:]
++    if t.endswith("```"):
++        t = t[:-3]
++    # Normalise typographic punctuation to ASCII. Safe here: this is a data
++    # payload, not prose we must preserve byte-for-byte.
++    t = (t.replace("\u2018", "'").replace("\u2019", "'")
++          .replace("\u201c", '"').replace("\u201d", '"').strip())
++    a, b = t.find("{"), t.rfind("}")
++    if a != -1 and b > a:
++        t = t[a:b + 1]
++
++    for attempt in (lambda: _json.loads(t), lambda: _le(t)):
++        try:
++            out = attempt()
++            if isinstance(out, dict):
++                return out
++        except Exception:
++            pass
++
++    # Last resort: lift each key's value directly. Tolerates unescaped quotes,
++    # apostrophes and newlines inside the value because it anchors on the NEXT
++    # key or the closing brace rather than on a quote character.
++    if keys:
++        got, ks = {}, list(keys)
++        for k in ks:
++            others = "|".join(_re.escape(o) for o in ks if o != k)
++            stop = rf'(?=\s*,\s*["\']?(?:{others})["\']?\s*:|\s*\}}\s*$)' if others else r'(?=\s*\}}\s*$)'
++            m = _re.search(rf'["\']?{_re.escape(k)}["\']?\s*:\s*["\']?(.*?)["\']?\s*{stop}',
++                           t, _re.S)
++            if m:
++                got[k] = m.group(1).strip()
++        if got:
++            return got
++    raise ValueError(f"could not parse model output as JSON: {t[:120]!r}")
++
+ def parse_llm_response(response_text: str):
+     """Parse LLM response to extract feedback and score."""
+     if response_text.startswith("```json"):
+@@ -74,7 +132,7 @@ def parse_llm_response(response_text: str):
+     if response_text.endswith("```"):
+         response_text = response_text[:-3]
+         
+-    response_json = literal_eval(response_text)
++    response_json = _coerce_model_json(response_text, keys=('feedback', 'judgment', 'reasoning'))
+ 
+     reasoning = response_json["reasoning"]
+     judgment = response_json["judgment"]
+diff --git a/gyms/SearchGym/searchgym/utils.py b/gyms/SearchGym/searchgym/utils.py
+index dd553e5..18b8272 100644
+--- a/gyms/SearchGym/searchgym/utils.py
++++ b/gyms/SearchGym/searchgym/utils.py
+@@ -28,11 +28,39 @@ def get_serper_api_key():
+     if api_key:
+         return api_key
+     
++    if OFFLINE:
++        # SEARCH_OFFLINE=1: no key needed, and none will be used. Returning a
++        # sentinel rather than raising is what makes the gym IMPORTABLE -- this
++        # function runs at module import (below), so without it `bamboogle`
++        # cannot even be loaded, let alone evaluated.
++        return "__offline__"
+     raise ValueError("Serper API key not found. Please provide it in secret.json or SERPER_API_KEY environment variable.")
+ 
++
++# ── offline / closed-book mode ───────────────────────────────────────────────
++# SEARCH_OFFLINE=1 runs SearchGym with the search tool stubbed out, turning it
++# into a closed-book two-hop QA eval. Scoring is untouched: Bamboogle ships gold
++# answers and _handle_answer_action compares against them without consulting
++# search at all.
++#
++# The stub text matters more than it looks. When the key merely EXPIRES, every
++# call raises, _handle_search_action catches it and hands back "Search failed:
++# ...", and the agent -- with no way to know the tool is permanently gone --
++# retries until its turn budget is spent. One early run showed exactly that:
++# 25,192 "Not enough credits" responses against 13 successes, i.e. a
++# measurement of retry behaviour under a broken tool, not of the task itself.
++# Saying so plainly, once, lets the agent stop and answer, which is the
++# thing we actually want to measure.
++OFFLINE = os.getenv("SEARCH_OFFLINE", "0") == "1"
++OFFLINE_NOTICE = os.getenv(
++    "SEARCH_OFFLINE_NOTICE",
++    "Search is unavailable in this evaluation. No results can be retrieved, and "
++    "retrying will not help. Answer the question from your own knowledge.",
++)
++
+ api_key = get_serper_api_key()
+ 
+-conn = http.client.HTTPSConnection("google.serper.dev")
++conn = None if OFFLINE else http.client.HTTPSConnection("google.serper.dev")
+ headers = {
+   'X-API-KEY': api_key,
+   'Content-Type': 'application/json'
+@@ -56,6 +84,10 @@ def _slog(msg):
+ _call_count = 0
+ 
+ def search_serper(query, num=10):
++    if OFFLINE:
++        # One stable observation, not an error: see OFFLINE_NOTICE above.
++        return OFFLINE_NOTICE
++
+     # Handle mock API key for testing
+     if api_key == "mock_api_key_for_testing":
+         return f"Mock search results for '{query}':\n1. Mock Result 1\n- Snippet: This is a mock search result for testing purposes.\n2. Mock Result 2\n- Snippet: Another mock result to demonstrate the search functionality."
+diff --git a/gyms/TauGym/taugym/config.py b/gyms/TauGym/taugym/config.py
+index 03ea065..f14d4c3 100644
+--- a/gyms/TauGym/taugym/config.py
++++ b/gyms/TauGym/taugym/config.py
+@@ -31,6 +31,15 @@ class TauGymConfig:
+     normalize_rewards: bool = False
+     
+     def __post_init__(self):
++
++        # Seed override for multi-seed runs. Every gym pins seed=42 by default
++        # (TravelGym/TemplateGym leave it None, i.e. unseeded), and both the
++        # agent (--temperature 0) and the simulator (temperature 0.0 in this
++        # config) decode greedily -- so WITHOUT changing this a re-run reproduces
++        # the previous one and "seeds" would measure floating-point noise.
++        _s = os.environ.get("USERRL_GYM_SEED")
++        if _s:
++            self.seed = int(_s)
+         # Auto-load API key from environment if not provided
+         if self.api_key:
+             os.environ["OPENAI_API_KEY"] = self.api_key
+diff --git a/gyms/TelepathyGym/telepathygym/config.py b/gyms/TelepathyGym/telepathygym/config.py
+index 5ece55b..36feb3e 100644
+--- a/gyms/TelepathyGym/telepathygym/config.py
++++ b/gyms/TelepathyGym/telepathygym/config.py
+@@ -42,6 +42,25 @@ class TelepathyGymConfig:
+     data_source: Optional[Union[str, List[str]]] = None  # story title(s) or None for random
+     
+     def __post_init__(self):
++
++        # Seed override for multi-seed runs. Every gym pins seed=42 by default
++        # (TravelGym/TemplateGym leave it None, i.e. unseeded), and both the
++        # agent (--temperature 0) and the simulator (temperature 0.0 in this
++        # config) decode greedily -- so WITHOUT changing this a re-run reproduces
++        # the previous one and "seeds" would measure floating-point noise.
++        _s = os.environ.get("USERRL_GYM_SEED")
++        if _s:
++            self.seed = int(_s)
++
++        # Simulator-call timeout. The 10s default predates thinking simulators and
++        # slower hosted routes: a large hosted reasoning model answers in 14-17s
++        # and a fast hosted model in ~6s, so a 10s ceiling fails the slower one
++        # on EVERY call in this gym. The failure is silent -- eval.py's rollout()
++        # catches the TimeoutError and returns [0], which is indistinguishable
++        # in the results from an agent that genuinely scored nothing.
++        _t = os.environ.get("USERRL_SIM_TIMEOUT")
++        if _t:
++            self.timeout = type(self.timeout)(float(_t))
+         # Auto-load API key from environment if not provided
+         if not self.api_key:
+             self.api_key = os.getenv("OPENAI_API_KEY", "")
+diff --git a/gyms/TelepathyGym/telepathygym/env/prompts.py b/gyms/TelepathyGym/telepathygym/env/prompts.py
+index 7246422..2b9049a 100644
+--- a/gyms/TelepathyGym/telepathygym/env/prompts.py
++++ b/gyms/TelepathyGym/telepathygym/env/prompts.py
+@@ -144,6 +144,64 @@ def build_prompt(action_str: str, is_answer: bool = False, story: Dict[str, Any]
+         return messages
+ 
+ 
++
++def _coerce_model_json(response_text, keys=()):
++    """Parse model output that is *meant* to be JSON but often is not.
++
++    An earlier run still failed 283 times after json.loads+literal_eval were added,
++    because the model emits shapes that defeat BOTH:
++      * curly quotes as delimiters -- {\u2018response\u2019: \u2018...\u2019}
++        -> "invalid character '\u2019' (U+2019)"
++      * single-quoted dicts whose values contain apostrophes -- {'response':
++        'I'm glad'} -> "unterminated string literal" / "invalid syntax"
++    Every failure was swallowed into a canned reply worth 0.0 reward, so the gym
++    scored zero while the simulator was answering perfectly well.
++
++    Four tiers, cheapest first. The last one does not parse structure at all --
++    it pulls the named keys out with a regex, which survives any quoting the
++    model invents.
++    """
++    import json as _json
++    import re as _re
++    from ast import literal_eval as _le
++
++    t = (response_text or "").strip()
++    if t.startswith("```"):
++        t = t.split("\n", 1)[-1] if "\n" in t else t[3:]
++    if t.endswith("```"):
++        t = t[:-3]
++    # Normalise typographic punctuation to ASCII. Safe here: this is a data
++    # payload, not prose we must preserve byte-for-byte.
++    t = (t.replace("\u2018", "'").replace("\u2019", "'")
++          .replace("\u201c", '"').replace("\u201d", '"').strip())
++    a, b = t.find("{"), t.rfind("}")
++    if a != -1 and b > a:
++        t = t[a:b + 1]
++
++    for attempt in (lambda: _json.loads(t), lambda: _le(t)):
++        try:
++            out = attempt()
++            if isinstance(out, dict):
++                return out
++        except Exception:
++            pass
++
++    # Last resort: lift each key's value directly. Tolerates unescaped quotes,
++    # apostrophes and newlines inside the value because it anchors on the NEXT
++    # key or the closing brace rather than on a quote character.
++    if keys:
++        got, ks = {}, list(keys)
++        for k in ks:
++            others = "|".join(_re.escape(o) for o in ks if o != k)
++            stop = rf'(?=\s*,\s*["\']?(?:{others})["\']?\s*:|\s*\}}\s*$)' if others else r'(?=\s*\}}\s*$)'
++            m = _re.search(rf'["\']?{_re.escape(k)}["\']?\s*:\s*["\']?(.*?)["\']?\s*{stop}',
++                           t, _re.S)
++            if m:
++                got[k] = m.group(1).strip()
++        if got:
++            return got
++    raise ValueError(f"could not parse model output as JSON: {t[:120]!r}")
++
+ def parse_llm_response(response_text: str, is_answer: bool = False) -> Tuple[str, float, Dict[str, Any]]:
+     """Parse LLM response to extract feedback and score."""
+     if response_text.startswith("```json"):
+@@ -151,7 +209,7 @@ def parse_llm_response(response_text: str, is_answer: bool = False) -> Tuple[str
+     if response_text.endswith("```"):
+         response_text = response_text[:-3]
+         
+-    response_json = literal_eval(response_text)
++    response_json = _coerce_model_json(response_text, keys=('feedback', 'judgment', 'response'))
+ 
+     if is_answer:
+         # For final guesses - either completely right (1.0) or wrong (0.0)
+diff --git a/gyms/TravelGym/travelgym/config.py b/gyms/TravelGym/travelgym/config.py
+index 9a3ce26..4006612 100644
+--- a/gyms/TravelGym/travelgym/config.py
++++ b/gyms/TravelGym/travelgym/config.py
+@@ -68,6 +68,25 @@ class TravelGymConfig:
+     track_function_calls: bool = True
+     
+     def __post_init__(self):
++
++        # Seed override for multi-seed runs. Every gym pins seed=42 by default
++        # (TravelGym/TemplateGym leave it None, i.e. unseeded), and both the
++        # agent (--temperature 0) and the simulator (temperature 0.0 in this
++        # config) decode greedily -- so WITHOUT changing this a re-run reproduces
++        # the previous one and "seeds" would measure floating-point noise.
++        _s = os.environ.get("USERRL_GYM_SEED")
++        if _s:
++            self.seed = int(_s)
++
++        # Simulator-call timeout. The 10s default predates thinking simulators and
++        # slower hosted routes: a large hosted reasoning model answers in 14-17s
++        # and a fast hosted model in ~6s, so a 10s ceiling fails the slower one
++        # on EVERY call in this gym. The failure is silent -- eval.py's rollout()
++        # catches the TimeoutError and returns [0], which is indistinguishable
++        # in the results from an agent that genuinely scored nothing.
++        _t = os.environ.get("USERRL_SIM_TIMEOUT")
++        if _t:
++            self.timeout = type(self.timeout)(float(_t))
+         """Post-initialization validation and setup."""
+         # Set API key from environment if not provided
+         if not self.api_key:
+diff --git a/gyms/TravelGym/travelgym/env/prompt_async.py b/gyms/TravelGym/travelgym/env/prompt_async.py
+index 1069536..0ef1975 100644
+--- a/gyms/TravelGym/travelgym/env/prompt_async.py
++++ b/gyms/TravelGym/travelgym/env/prompt_async.py
+@@ -271,6 +271,20 @@ async def async_evaluate_action(
+                 response_json = await async_model_call(system_prompt, user_prompt, model_config)
+                 # process the model call
+                 assert response_json is not None and "response" in response_json, f"Invalid response: {response_json}\nMissing response"
++                # This line was missing, and it is the single largest source of
++                # bad turns in the whole evaluation. Every other branch assigns
++                # `response` from response_json before using it (see :255, :280,
++                # :287, :300) and the SYNC twin in prompts.py does too; only this
++                # one went straight from the assert to using the name. So the
++                # passive-elicitation branch raised UnboundLocalError 100% of the
++                # times it was taken, was swallowed by the except below, and
++                # returned the canned "I'm sorry, I'm not sure how to respond"
++                # with default_reward instead. Measured: 38,767 of 39,828
++                # bad turns -- 96% -- traced to this one omission, across
++                # every agent and every simulator. TravelGym is 8 of the 15 gyms,
++                # so its core elicitation mechanic has never worked in the async
++                # (evaluation) path.
++                response = response_json["response"].strip()
+                 conversation_history.append({"role": "agent", "content": action, "note": "The agent's latest utterance is not related to any preference I have, and the topic is off the target for several turns. I will respond naturally and coherently, but also proactively elicit a preference in an implicit and indirect manner."})
+                 conversation_history.append({"role": "user", "content": response})
+                 return response, [preference_id], reward
+diff --git a/gyms/TurtleGym/turtlegym/config.py b/gyms/TurtleGym/turtlegym/config.py
+index 764ef2c..b89302a 100644
+--- a/gyms/TurtleGym/turtlegym/config.py
++++ b/gyms/TurtleGym/turtlegym/config.py
+@@ -43,6 +43,25 @@ class TurtleGymConfig:
+     data_source: Optional[Union[str, List[str]]] = None  # story title(s) or None for random
+ 
+     def __post_init__(self):
++
++        # Seed override for multi-seed runs. Every gym pins seed=42 by default
++        # (TravelGym/TemplateGym leave it None, i.e. unseeded), and both the
++        # agent (--temperature 0) and the simulator (temperature 0.0 in this
++        # config) decode greedily -- so WITHOUT changing this a re-run reproduces
++        # the previous one and "seeds" would measure floating-point noise.
++        _s = os.environ.get("USERRL_GYM_SEED")
++        if _s:
++            self.seed = int(_s)
++
++        # Simulator-call timeout. The 10s default predates thinking simulators and
++        # slower hosted routes: a large hosted reasoning model answers in 14-17s
++        # and a fast hosted model in ~6s, so a 10s ceiling fails the slower one
++        # on EVERY call in this gym. The failure is silent -- eval.py's rollout()
++        # catches the TimeoutError and returns [0], which is indistinguishable
++        # in the results from an agent that genuinely scored nothing.
++        _t = os.environ.get("USERRL_SIM_TIMEOUT")
++        if _t:
++            self.timeout = type(self.timeout)(float(_t))
+         # Auto-load API key from environment if not provided
+         if not self.api_key:
+             self.api_key = os.getenv("OPENAI_API_KEY", "")
+diff --git a/gyms/TurtleGym/turtlegym/env/prompts.py b/gyms/TurtleGym/turtlegym/env/prompts.py
+index 99f9eb3..814548f 100644
+--- a/gyms/TurtleGym/turtlegym/env/prompts.py
++++ b/gyms/TurtleGym/turtlegym/env/prompts.py
+@@ -144,6 +144,64 @@ def build_prompt(action_str: str, is_answer: bool = False, story: Dict[str, Any]
+         return messages
+ 
+ 
++
++def _coerce_model_json(response_text, keys=()):
++    """Parse model output that is *meant* to be JSON but often is not.
++
++    An earlier run still failed 283 times after json.loads+literal_eval were added,
++    because the model emits shapes that defeat BOTH:
++      * curly quotes as delimiters -- {\u2018response\u2019: \u2018...\u2019}
++        -> "invalid character '\u2019' (U+2019)"
++      * single-quoted dicts whose values contain apostrophes -- {'response':
++        'I'm glad'} -> "unterminated string literal" / "invalid syntax"
++    Every failure was swallowed into a canned reply worth 0.0 reward, so the gym
++    scored zero while the simulator was answering perfectly well.
++
++    Four tiers, cheapest first. The last one does not parse structure at all --
++    it pulls the named keys out with a regex, which survives any quoting the
++    model invents.
++    """
++    import json as _json
++    import re as _re
++    from ast import literal_eval as _le
++
++    t = (response_text or "").strip()
++    if t.startswith("```"):
++        t = t.split("\n", 1)[-1] if "\n" in t else t[3:]
++    if t.endswith("```"):
++        t = t[:-3]
++    # Normalise typographic punctuation to ASCII. Safe here: this is a data
++    # payload, not prose we must preserve byte-for-byte.
++    t = (t.replace("\u2018", "'").replace("\u2019", "'")
++          .replace("\u201c", '"').replace("\u201d", '"').strip())
++    a, b = t.find("{"), t.rfind("}")
++    if a != -1 and b > a:
++        t = t[a:b + 1]
++
++    for attempt in (lambda: _json.loads(t), lambda: _le(t)):
++        try:
++            out = attempt()
++            if isinstance(out, dict):
++                return out
++        except Exception:
++            pass
++
++    # Last resort: lift each key's value directly. Tolerates unescaped quotes,
++    # apostrophes and newlines inside the value because it anchors on the NEXT
++    # key or the closing brace rather than on a quote character.
++    if keys:
++        got, ks = {}, list(keys)
++        for k in ks:
++            others = "|".join(_re.escape(o) for o in ks if o != k)
++            stop = rf'(?=\s*,\s*["\']?(?:{others})["\']?\s*:|\s*\}}\s*$)' if others else r'(?=\s*\}}\s*$)'
++            m = _re.search(rf'["\']?{_re.escape(k)}["\']?\s*:\s*["\']?(.*?)["\']?\s*{stop}',
++                           t, _re.S)
++            if m:
++                got[k] = m.group(1).strip()
++        if got:
++            return got
++    raise ValueError(f"could not parse model output as JSON: {t[:120]!r}")
++
+ def parse_llm_response(response_text: str, is_answer: bool = False, story: Dict[str, Any] = None) -> Tuple[str, float, Dict[str, Any]]:
+     """Parse LLM response to extract feedback, reasoning, score, and satisfied criteria."""
+     if response_text.startswith("```json"):
+@@ -151,7 +209,7 @@ def parse_llm_response(response_text: str, is_answer: bool = False, story: Dict[
+     if response_text.endswith("```"):
+         response_text = response_text[:-3]
+         
+-    response_json = literal_eval(response_text)
++    response_json = _coerce_model_json(response_text, keys=('feedback', 'response', 'scores'))
+ 
+     if is_answer:
+         evaluation_criteria = story['evaluation_criteria']

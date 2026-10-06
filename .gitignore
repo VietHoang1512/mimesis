@@ -10,6 +10,7 @@
 # Checkpoints and local data the release does not carry
 **/models/
 **/data/
+**/results/
 
 # Python
 __pycache__/
