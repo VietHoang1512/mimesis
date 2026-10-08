@@ -1,9 +1,83 @@
-Code for the paper: MIMESIS: Learning User Simulators as Training Environments for Interactive Agents
+<p align="center">
+  <img src="docs/static/images/logo.png" alt="MIMESIS logo" width="96">
+</p>
 
-Two halves, each self-contained with its own README:
+<h1 align="center">MIMESIS</h1>
 
-- [`simulator/`](simulator) — training and evaluating the user simulator
-  (Mimesis): SFT, RL, and the simulator benchmarks.
-- [`agent/`](agent) — training and evaluating the agent against that simulator:
-  multi-turn GRPO plus the SDPO self-distillation term, and the 15-gym
-  evaluation behind the main results table.
+<p align="center"><b>Learning User Simulators as Training Environments for Interactive Agents</b></p>
+
+<p align="center">
+  <a href="https://arxiv.org/abs/2610.09484"><img src="https://img.shields.io/badge/arXiv-2610.09484-b31b1b.svg" alt="arXiv"></a>
+  <a href="https://viethoang1512.github.io/mimesis/"><img src="https://img.shields.io/badge/Project-page-0062fc.svg" alt="Project page"></a>
+  <a href="#models"><img src="https://img.shields.io/badge/Models-4B%20%7C%209B-f5a623.svg" alt="Models"></a>
+  <a href="#license"><img src="https://img.shields.io/badge/License-Apache%202.0-2b6cb0.svg" alt="License: Apache 2.0"></a>
+</p>
+
+<p align="center">
+  Hoang Phan<sup>1,2,*</sup> · Dat Huynh<sup>1</sup> · Andrey Zhmoginov · Qi Zeng<sup>1</sup> · Wancen Mu<sup>1</sup> · Yue Cao<sup>1</sup> · Shengjie Bi<sup>1</sup> · Yun He<sup>1</sup> · Changdae Oh<sup>1,3,*</sup> · Deren Lei<sup>1</sup><br>
+  <sup>1</sup>Meta Superintelligence Labs · <sup>2</sup>New York University · <sup>3</sup>University of Wisconsin–Madison · <sup>*</sup>Work done at Meta
+</p>
+
+---
+
+Simulated users offer a scalable alternative to costly human feedback, but they must both resemble real user behavior and provide useful learning experiences for agents. Most agent-training frameworks instead rely on off-the-shelf assistant LLMs, whose helpfulness can make them overly cooperative, explicit, and behaviorally homogeneous compared with real users.
+
+**MIMESIS** is a purpose-built user simulator trained on human conversations with explicit reasoning supervision and 13 realistic behavioral patterns derived from real user interactions. We freeze the simulator and train agents by interacting with it using multi-turn reinforcement learning. Across eight environments, training with MIMESIS yields better agent performance than training with GPT-5.5 under all nine unseen user simulators.
+
+<p align="center">
+  <img src="docs/static/images/overview.png" alt="Overview of the two stages: Stage I trains the user simulator; Stage II freezes it as the environment for agent RL, where coaching from the simulator's private thoughts supervises the agent during training only." width="100%">
+</p>
+
+
+**Coached On-Policy Self-Distillation (CSD)** leverages simulator-generated private reasoning traces and subsequent utterances as feedback on how well the agent addresses user needs. A coach converts this information into concise coaching notes, and CSD turns this feedback into dense, token-level supervision beyond sparse task rewards, while the deployed agent relies only on public dialogue.
+
+
+## News
+
+- **2026-10-07**: Paper released on [arXiv](https://arxiv.org/abs/2610.09484) together with code.
+
+## Highlights
+
+**Our 9B model surpasses frontier models on SOUL-Index, RealUserSim, τ-USI, and SimulatorArena.** Scores for MIMESIS-9B and the strongest baseline on each benchmark:
+
+| Benchmark | MIMESIS-9B | Strongest baseline |
+|---|---:|---:|
+| SOUL-Index, simulation capability ↑ | **65.7** | 64.9, Claude-Opus-5 |
+| RealUserSim PT3, behavioral fidelity ↑ | **94.0** | 80.6, Claude-Opus-5 |
+| SimulatorArena, Turing distance ↓ | **38.7** | 42.3, Claude-Opus-5 |
+| τ-USI, alignment with human users on τ-bench ↑ | 80.17 | **80.44**, Osim-8B |
+
+**Stronger generalization to new user simulators.** We evaluate whether a Qwen3-8B agent trained with MIMESIS generalizes to user models not encountered during training, across eight environments, three of them held out from training, and nine evaluation user models:
+
+| Training condition | Mean score over 9 unseen user simulators |
+|---|---:|
+| GRPO w. GPT-5.5 (UserRL) | 26.10 |
+| GRPO w. MIMESIS-9B (UserRL+) | 29.54 |
+| CSD w. MIMESIS-9B | **31.09** |
+
+With the GRPO objective fixed, replacing GPT-5.5 with MIMESIS-9B improves overall performance under every evaluation user, and CSD further improves performance under all nine. Per-environment results, more baselines, and qualitative examples are in the paper and on the [project page](https://viethoang1512.github.io/mimesis/).
+
+## Repository layout
+
+| Directory | What it contains | Start here |
+|---|---|---|
+| [`simulator/`](simulator) | Training and evaluation of the user simulator: role-reversal mid-training, ThoughtTrace reasoning SFT, joint multi-domain RL, and the SOUL, RealUserSim, τ-USI, SimulatorArena, and Turing evaluations. Vendors a fork of verl v0.7.0. | [`simulator/README.md`](simulator/README.md) |
+| [`agent/`](agent) | Multi-turn GRPO and CSD training of a Qwen3-8B agent against a served simulator, plus the eight-environment evaluation under any user model. Vendors a pruned fork of verl. | [`agent/README.md`](agent/README.md) |
+
+## Citation
+
+```bibtex
+@article{phan2026mimesis,
+  title   = {{MIMESIS}: Learning User Simulators as Training Environments for Interactive Agents},
+  author  = {Phan, Hoang and Huynh, Dat and Zhmoginov, Andrey and Zeng, Qi and Mu, Wancen and Cao, Yue and Bi, Shengjie and He, Yun and Oh, Changdae and Lei, Deren},
+  journal = {arXiv preprint arXiv:2610.09484},
+  year    = {2026}
+}
+```
+
+## Acknowledgements
+
+This work builds on [verl](https://github.com/volcengine/verl) and [UserRL](https://github.com/SalesforceAIResearch/UserRL), and on these datasets and benchmarks:
+
+- **Training data and environments.** The OdysSim mid-training corpus and SOUL environments ([arXiv:2606.14199](https://arxiv.org/abs/2606.14199)), ThoughtTrace ([arXiv:2605.20087](https://arxiv.org/abs/2605.20087)), and ABCD.
+- **Evaluation.** RealUserSim ([arXiv:2605.20204](https://arxiv.org/abs/2605.20204)), τ-bench ([arXiv:2406.12045](https://arxiv.org/abs/2406.12045)) with τ-USI ([arXiv:2603.11245](https://arxiv.org/abs/2603.11245)), and SimulatorArena ([arXiv:2510.05444](https://arxiv.org/abs/2510.05444)).
