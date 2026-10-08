@@ -1,0 +1,201 @@
+diff --git a/simulation/utils.py b/simulation/utils.py
+index 1007d96..e5a3b1e 100644
+--- a/simulation/utils.py
++++ b/simulation/utils.py
+@@ -63,6 +63,9 @@ ERROR_ERRORS_TO_MESSAGES = {
+ }
+ 
+ import tiktoken
++
++# MIMESIS addition: transport for a local vLLM server or hosted endpoint.
++from mimesis_transport import generate_from_mimesis, is_mimesis_model
+ enc = tiktoken.encoding_for_model("gpt-4o")
+ 
+ import os
+@@ -288,6 +291,41 @@ async def generate_from_openai_chat_completion(
+         List of generated responses.
+     """
+ 
++    # MIMESIS: route hosted/local names through llm/api.py before the AsyncOpenAI
++    # client is even built. Without this the call lands on api.openai.com, which is
++    # VPN-gated from the cluster and simply hangs. generate_responses_in_batch has
++    # the same branch; termination detection calls THIS function directly, so it
++    # needs its own.
++    #
++    # SIMARENA_EVALUATOR remaps the repo's hardcoded evaluator names (gpt-5-mini in
++    # terminate_conversation_document_creation.py, gpt-5-mini as the default
++    # --evaluator_model) onto something the gateway actually serves. Only gpt-5.5
++    # exists on the Responses route here.
++    _remap = os.environ.get("SIMARENA_EVALUATOR")
++    if _remap and model_name in ("gpt-5-mini", "gpt-5-nano", "gpt-4o", "gpt-4o-mini"):
++        model_name = _remap
++    if is_mimesis_model(model_name):
++        _texts = await generate_from_mimesis(
++            full_contexts=full_contexts, model_name=model_name,
++            temperature=temperature, max_tokens=max_tokens, n=n,
++            show_progress=show_progress, max_concurrent=max_concurrent,
++        )
++        # generate_from_mimesis returns list[list[str]] -- the contract of
++        # generate_responses_in_batch. THIS function instead returns raw SDK
++        # objects, which callers consume as response.choices[0].message.content
++        # (e.g. terminate_conversation_document_creation.py:162). Returning bare
++        # strings here makes every call fail with "'list' object has no attribute
++        # 'choices'", silently producing an EMPTY terminated_conversations file
++        # rather than an error -- which then makes every downstream stage skip.
++        # So wrap. SimpleNamespace, not a dict: the access is attribute-style, and
++        # the repo's own empty-response fallback returns a dict and is equally
++        # broken for the same reason.
++        from types import SimpleNamespace as _NS
++        return [
++            _NS(choices=[_NS(message=_NS(content=c)) for c in (cands or [""])])
++            for cands in _texts
++        ]
++
+     client = AsyncOpenAI(
+         api_key = os.environ.get("OPENAI_API_KEY"),
+     )
+@@ -1341,6 +1379,17 @@ async def generate_responses_in_batch(
+                     content = ""
+                 scenario_responses.append(content)
+             generated_responses.append(scenario_responses)
++    elif is_mimesis_model(model_name):
++        # MIMESIS addition. Hosted names go through llm/api.py; local names
++        # Gateway); "local/<served-name>" goes to a `vllm serve` on localhost.
++        # The direct provider SDKs above are unreachable from this cluster --
++        # AsyncOpenAI is built with no base_url, so those branches would hang on
++        # api.openai.com. See simulation/mimesis_transport.py.
++        generated_responses = await generate_from_mimesis(
++            full_contexts, model_name, temperature=temperature,
++            max_tokens=max_tokens, n=n, show_progress=show_progress,
++        )
++
+     else:
+         # Handle other models or raise an exception
+         raise ValueError(f"Unsupported model: {model_name}")
+@@ -1352,6 +1401,36 @@ async def generate_responses_in_batch(
+         return generated_responses
+ 
+ 
++# --- termination detection -------------------------------------------------
++# SimulatorArena ends a conversation only when the simulator emits the literal
++# string "terminate conversation". Measured across 23 simulators on 459 topics,
++# NOTHING emits it -- not one frontier model, not one local checkpoint. Meanwhile
++# the same local checkpoints emit tau-USI's "###STOP###" on 94-99% of tasks. So the
++# check was testing knowledge of one specific phrase, not the ability to end a
++# conversation.
++#
++# Swapping "terminate conversation" for "###STOP###" would only invert the bias:
++# ###STOP### is plausibly in our checkpoints' fine-tuning distribution and is not in
++# any frontier model's. Accept the union instead, so the measurement is "did the
++# simulator try to end the conversation" rather than "does it know the password".
++# Every accepted form is an explicit, unambiguous termination signal -- no semantic
++# guessing, so a user who merely sounds satisfied is still not terminated.
++_TERMINATION_SIGNALS = (
++    "terminate conversation",   # SimulatorArena, original
++    "###stop###",               # tau-USI / tau-bench
++    "/close",                   # RealUserSim PT3
++    "[end]", "<end>",           # common ad-hoc variants
++)
++
++
++def _is_termination(text):
++    """True if the simulator signalled it wants to stop."""
++    if not text or not str(text).strip():
++        return True                      # empty/blank turn: nothing to send, treat as end
++    low = str(text).lower()
++    return any(sig in low for sig in _TERMINATION_SIGNALS)
++
++
+ async def simulate_conversation_in_batch_math_tutoring(
+     problems: List[str],
+     user_model_name: str,
+@@ -1475,7 +1554,7 @@ async def simulate_conversation_in_batch_math_tutoring(
+ 
+                 data['original_user_queries'].append(original_user_query)
+ 
+-                if "terminate conversation" in original_user_query.lower() or not original_user_query:
++                if _is_termination(original_user_query):
+                     data['conversation'].append(("user", original_user_query))
+                     data['finished'] = True
+                     continue
+@@ -1532,7 +1611,7 @@ async def simulate_conversation_in_batch_math_tutoring(
+             else:
+                 query = user_query
+ 
+-            if "terminate conversation" in user_query.lower() or not user_query:
++            if _is_termination(user_query):
+                 data['finished'] = True
+                 continue
+ 
+@@ -1716,7 +1795,7 @@ async def simulate_conversation_with_user_profile_in_batch_math_tutoring(
+ 
+                 data['original_user_queries'].append(original_user_query)
+ 
+-                if "terminate conversation" in original_user_query.lower() or not original_user_query:
++                if _is_termination(original_user_query):
+                     data['conversation'].append(("user", original_user_query))
+                     data['finished'] = True
+                     continue
+@@ -1773,7 +1852,7 @@ async def simulate_conversation_with_user_profile_in_batch_math_tutoring(
+             else:
+                 query = user_query
+ 
+-            if "terminate conversation" in user_query.lower() or not user_query:
++            if _is_termination(user_query):
+                 data['finished'] = True
+                 continue
+ 
+@@ -1921,7 +2000,7 @@ async def simulate_conversation_with_user_profile_in_batch_math_tutoring(
+             else:
+                 query = user_query
+ 
+-            if "terminate conversation" in user_query.lower() or not user_query:
++            if _is_termination(user_query):
+                 data['finished'] = True
+                 continue
+ 
+@@ -1985,7 +2064,7 @@ async def simulate_conversation_in_batch_document_creation(
+     user_model_prompt_template: str,
+     user_temperature: float = 0.7,
+     assistant_temperature: float = 0,
+-    max_tokens: int = 2000,
++    max_tokens: int = int(os.environ.get("SIMARENA_MAX_TOKENS", 8192)),
+     max_turns: int = 15,
+     show_progress: bool = True,
+     length_control_bool: bool = False,
+@@ -2098,7 +2177,7 @@ async def simulate_conversation_in_batch_document_creation(
+ 
+                 data['original_user_queries'].append(original_user_query)
+ 
+-                if "terminate conversation" in original_user_query.lower() or not original_user_query:
++                if _is_termination(original_user_query):
+                     data['conversation'].append(("user", original_user_query))
+                     data['finished'] = True
+                     continue
+@@ -2156,7 +2235,7 @@ async def simulate_conversation_in_batch_document_creation(
+                 data['finished'] = True
+                 continue
+ 
+-            if "terminate conversation" in user_query.lower():
++            if _is_termination(user_query):
+                 print(f"User query contains 'terminate conversation'")
+                 data['finished'] = True
+                 continue
+@@ -2343,7 +2422,7 @@ async def simulate_conversation_with_user_profile_in_batch_document_creation(
+ 
+                 data['original_user_queries'].append(original_user_query)
+ 
+-                if "terminate conversation" in original_user_query.lower() or not original_user_query:
++                if _is_termination(original_user_query):
+                     data['conversation'].append(("user", original_user_query))
+                     data['finished'] = True
+                     continue
+@@ -2396,7 +2475,7 @@ async def simulate_conversation_with_user_profile_in_batch_document_creation(
+             else:
+                 query = user_query
+ 
+-            if "terminate conversation" in user_query.lower() or not user_query:
++            if _is_termination(user_query):
+                 data['finished'] = True
+                 continue
+ 

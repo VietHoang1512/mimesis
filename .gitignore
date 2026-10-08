@@ -1,0 +1,26 @@
+# Run artifacts
+**/outputs/
+**/logs/
+**/wandb/
+**/hf_cache/
+*.log
+*.out
+*.err
+
+# Checkpoints and local data the release does not carry
+**/models/
+**/data/
+**/results/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Never commit a credential. The scripts read LLAMA_API_KEY / OPENAI_AGENT_API_KEY
+# from the environment; see scripts/env.sh.
+.env
+*.key

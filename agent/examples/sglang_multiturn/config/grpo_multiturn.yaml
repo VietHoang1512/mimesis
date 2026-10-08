@@ -1,0 +1,21 @@
+hydra:
+  searchpath:
+    - file://verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+algorithm:
+  action_credit_ratio: 0.8
+
+actor_rollout_ref:
+  hybrid_engine: True
+  rollout:
+    name: sglang
+    multi_turn:
+      enable: True
+      max_turns: 16
+      model_name: gpt-4o
+      turn_level_method: Equalized
+      trajectory_score_method: Sum
