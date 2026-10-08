@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MIMESIS: Learning User Simulators as Training Environments for Interactive Agents</title>
+  <meta name="description" content="MIMESIS is a purpose-built user simulator trained on human conversations with explicit reasoning supervision and 13 realistic behavioral patterns derived from real user interactions. Training with MIMESIS yields better agent performance than training with GPT-5.5 under all nine unseen user simulators, and Coached On-Policy Self-Distillation (CSD) yields further gains.">
+  <meta name="theme-color" content="#0062fc">
+  <link rel="canonical" href="https://viethoang1512.github.io/mimesis/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="MIMESIS: Learning User Simulators as Training Environments for Interactive Agents">
+  <meta property="og:description" content="A purpose-built user simulator trained on human conversations, used as a training environment for interactive agents.">
+  <meta property="og:url" content="https://viethoang1512.github.io/mimesis/">
+  <meta property="og:image" content="https://viethoang1512.github.io/mimesis/static/images/social-card.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="static/images/favicon.png">
+  <link rel="apple-touch-icon" href="static/images/apple-touch-icon.png">
+  <link rel="stylesheet" href="static/css/style.css">
+  <script>
+    // Apply a saved theme before first paint so the page never flashes.
+    try { var t = localStorage.getItem("mimesis-theme"); if (t === "dark" || t === "light") document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="#top" aria-label="MIMESIS, back to top">
+        <img src="static/images/logo.png" alt="" width="28" height="28">
+        <span>MIMESIS</span>
+      </a>
+      <nav class="site-nav" aria-label="Sections">
+        <a href="#problem">Problem</a>
+        <a href="#method">Method</a>
+        <a href="#behaviors">Behaviors</a>
+        <a href="#simulator">Simulator</a>
+        <a href="#agents">Agents</a>
+        <a href="#csd">CSD</a>
+        <a href="#examples">Examples</a>
+        <a href="#cite">Cite</a>
+      </nav>
+      <button class="theme-toggle" type="button" aria-label="Switch to dark theme">
+        <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1Z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- ================================================================ HERO -->
+    <section class="hero" id="top">
+      <div class="container narrow center">
+        <p class="eyebrow">arXiv 2610.09484 · Meta Superintelligence Labs</p>
+        <h1 class="title" aria-label="MIMESIS"><img class="title-mark" src="static/images/logo-mark.png" alt="" width="200" height="170"><span aria-hidden="true">IMESIS</span></h1>
+        <p class="subtitle">Learning User Simulators as Training Environments for Interactive Agents</p>
+
+        <ul class="authors" aria-label="Authors">
+          <li>Hoang Phan<sup>1,2,*</sup></li>
+          <li>Dat Huynh<sup>1</sup></li>
+          <li>Andrey Zhmoginov</li>
+          <li>Qi Zeng<sup>1</sup></li>
+          <li>Wancen Mu<sup>1</sup></li>
+          <li>Yue Cao<sup>1</sup></li>
+          <li>Shengjie Bi<sup>1</sup></li>
+          <li>Yun He<sup>1</sup></li>
+          <li>Changdae Oh<sup>1,3,*</sup></li>
+          <li>Deren Lei<sup>1</sup></li>
+        </ul>
+        <p class="affiliations">
+          <span><sup>1</sup>Meta Superintelligence Labs</span>
+          <span><sup>2</sup>New York University</span>
+          <span><sup>3</sup>University of Wisconsin–Madison</span>
+          <span class="muted"><sup>*</sup>Work done at Meta</span>
+        </p>
+
+        <div class="links" role="group" aria-label="Paper resources">
+          <a class="btn btn-primary" href="https://arxiv.org/abs/2610.09484">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2.8h8.2L19 7.6v13.6H6Z"/><path d="M14 2.8v5h5M9 12h7M9 15.5h7M9 19h4.5"/></svg>Paper</a>
+          <a class="btn" href="https://arxiv.org/pdf/2610.09484">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11M7.5 10.2 12 14.7l4.5-4.5M4.5 17.5v3h15v-3"/></svg>PDF</a>
+          <a class="btn" href="https://github.com/VietHoang1512/mimesis">
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="fill"><path d="M12 1.8a10.2 10.2 0 0 0-3.2 19.9c.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1 1.6 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.3-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .9-.3 2.8 1a9.6 9.6 0 0 1 5.1 0c1.9-1.3 2.8-1 2.8-1 .6 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10.2 10.2 0 0 0 12 1.8Z"/></svg>Code</a>
+          <a class="btn" href="https://github.com/VietHoang1512/mimesis#models">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.8 8.2 4.6v9.2L12 21.2l-8.2-4.6V7.4Z"/><path d="m3.8 7.4 8.2 4.6 8.2-4.6M12 12v9.2"/></svg>Models</a>
+          <a class="btn" href="#cite">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 7.5H6.2v4.2h3.3v1c0 1.7-1 2.8-2.8 3.3M18 7.5h-3.3v4.2H18v1c0 1.7-1 2.8-2.8 3.3"/></svg>BibTeX</a>
+        </div>
+
+        <p class="lede hero-lede">Simulated users offer a scalable alternative to costly human feedback, but they must both resemble real user behavior and provide useful learning experiences for agents. Most agent-training frameworks instead rely on off-the-shelf assistant LLMs, whose helpfulness can make them overly cooperative, explicit, and behaviorally homogeneous compared with real users. We introduce MIMESIS, a purpose-built user simulator trained on human conversations with explicit reasoning supervision and 13 realistic behavioral patterns derived from real user interactions.</p>
+      </div>
+
+      <div class="container">
+        <ul class="stats" aria-label="Headline results">
+          <li class="stat">
+            <span class="stat-label">SOUL-Index</span>
+            <span class="stat-value">65.7</span>
+            <span class="stat-delta"><span aria-hidden="true">▲</span> 0.8 above Claude-Opus-5, the strongest frontier model</span>
+          </li>
+          <li class="stat">
+            <span class="stat-label">RealUserSim behavioral fidelity</span>
+            <span class="stat-value">94.0</span>
+            <span class="stat-delta"><span aria-hidden="true">▲</span> 13.4 above Claude-Opus-5</span>
+          </li>
+          <li class="stat">
+            <span class="stat-label">SimulatorArena Turing distance</span>
+            <span class="stat-value">38.7</span>
+            <span class="stat-delta"><span aria-hidden="true">▼</span> 3.6 below Claude-Opus-5; lower is better</span>
+          </li>
+          <li class="stat">
+            <span class="stat-label">Agent score, mean over 9 unseen user simulators</span>
+            <span class="stat-value">31.1</span>
+            <span class="stat-delta"><span aria-hidden="true">▲</span> 5.0 above training with GPT-5.5</span>
+          </li>
+        </ul>
+        <p class="stats-note">Simulator results are for MIMESIS-9B. Across eight environments, training with MIMESIS yields better agent performance than training with GPT-5.5 under all nine unseen user simulators, and CSD yields further gains; the last tile compares CSD with MIMESIS-9B against GRPO with GPT-5.5.</p>
+      </div>
+    </section>
+
+    <!-- ================================================================ 01 PROBLEM -->
+    <section class="section" id="problem" aria-labelledby="problem-title">
+      <div class="container">
+        <header class="section-head">
+          <p class="kicker">01 · The problem</p>
+          <h2 id="problem-title">Off-the-shelf LLMs misrepresent agentic task difficulty</h2>
+          <p class="lede">User simulators affect not only dialogue style but also the distribution of trajectories encountered by an agent during training and evaluation. On τ-bench, a fixed GPT-5.5 agent succeeds on 63.6% of interactions with real users, whereas the three frontier API simulators raise its success rate to 82.4–84.4% and pretrained Qwen3.5-4B/9B reduce it by 16.0 and 14.9 percentage points. By contrast, purpose-built simulators are substantially better calibrated: every trained simulator deviates less than every off-the-shelf model.</p>
+        </header>
+
+        <figure class="chart-card" id="tau-card">
+          <div class="chart-head">
+            <div>
+              <h3 class="chart-title">Task success rate of a fixed GPT-5.5 agent on τ-bench</h3>
+              <p class="chart-sub">Deviation from the real-user success rate (63.6%) when each simulator plays the user role, in percentage points.</p>
+            </div>
+            <button class="table-toggle" type="button" aria-pressed="false" data-target="tau">Table</button>
+          </div>
+          <div class="chart" id="tau-chart"></div>
+          <div class="axis-notes" aria-hidden="true"><span>← too obstructive</span><span>too cooperative →</span></div>
+          <div class="chart-table" id="tau-table" hidden></div>
+          <figcaption>Frontier API users make the task substantially easier than interactions with real users, whereas pretrained models make it harder. Both serve as poor proxies for the user interactions used to train or evaluate agents, while purpose-built simulators more closely reproduce the human-user success rate.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ================================================================ 02 METHOD -->
+    <section class="section" id="method" aria-labelledby="method-title">
+      <div class="container">
+        <header class="section-head">
+          <p class="kicker">02 · Method</p>
+          <h2 id="method-title">A two-stage approach that connects simulator learning to agent post-training</h2>
+          <p class="lede">In the first stage, we train 4B and 9B user models on human conversations and a broad collection of human-simulation tasks. In the second stage, we freeze the learned user simulator and use it as an interactive environment for multi-turn agent reinforcement learning.</p>
+        </header>
+
+        <div class="stages">
+          <article class="stage">
+            <h3><span class="stage-tag">Stage I</span> Train the user</h3>
+            <p class="stage-lede">MIMESIS is trained through user-side mid-training, ThoughtTrace reasoning supervision, and joint RL with a realistic-behavior objective.</p>
+            <ol class="steps">
+              <li><strong>User-side mid-training.</strong> We adapt the language model to the user role through supervised mid-training on human–assistant conversations, using the preceding dialogue as context and the human user's next utterance as the prediction target. The mixture contains 21.2M examples from 62 corpora.</li>
+              <li><strong>Thought-augmented supervision.</strong> We fine-tune on 2,155 ThoughtTrace conversations, which pair user messages with self-reported motivations and reactions to preceding assistant responses. These reports supervise a private reasoning trace before the simulator's public response, while the observed user utterance remains the response target.</li>
+              <li><strong>Joint RL with realistic behaviors.</strong> We train the shared simulator directly on all SOUL domains, with rollouts from every domain updating the same parameter set. The mixture also includes a realistic-behavior task that trains the simulator to express 13 behaviors in grounded customer-support scenarios.</li>
+            </ol>
+          </article>
+          <article class="stage">
+            <h3><span class="stage-tag">Stage II</span> Train the agent</h3>
+            <p class="stage-lede">The frozen simulator generates multi-turn experience for agent RL.</p>
+            <ol class="steps" start="4">
+              <li><strong>Multi-turn reinforcement learning.</strong> We freeze the trained user simulator and optimize the agent through repeated interaction with it. The resulting conversations provide task rewards for multi-turn GRPO, following UserRL.</li>
+              <li><strong>Coached On-Policy Self-Distillation.</strong> After each sampled agent response, the simulator generates a private thought and the next public user utterance. CSD turns this privileged feedback into coaching notes and uses a self-teacher conditioned on them to provide dense token-level guidance to the policy.</li>
+              <li><strong>Privileged only during optimization.</strong> Both the rollout policy and the deployed agent condition solely on the observable conversation history.</li>
+            </ol>
+          </article>
+        </div>
+
+        <figure class="figure-card wide">
+          <div class="paper"><img src="static/images/overview.png" alt="Overview diagram. Stage I, train the user: human and user corpora, role-reversal mid-training, thinking-enabled supervision, and joint multi-domain RL with realistic behaviors produce the MIMESIS user simulator, which emits observable interaction and privileged information. Stage II, train the agent: in interactive user-agent gyms, the agent policy and the user simulator exchange responses and task rewards, while the simulator's private thought and future reaction go to a coach that sends a Coached On-Policy Self-Distillation hint to the agent. Evaluation: user-simulator benchmarking on situational and realistic benchmarks, and agent benchmarking on unseen user simulators." width="2366" height="1052" loading="lazy"></div>
+          <figcaption>We couple user-simulator learning with simulator-driven agent post-training. Stage I trains MIMESIS through user-side mid-training, ThoughtTrace reasoning supervision, and joint RL with a realistic-behavior objective. Stage II freezes the learned simulator and uses it to generate multi-turn experience for agent RL. The agent acts only on the observable conversation, while simulator-generated thoughts and reactions provide privileged, training-only feedback to the coach, which converts them into dense guidance for the agent.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ================================================================ 03 BEHAVIORS -->
+    <section class="section" id="behaviors" aria-labelledby="behaviors-title">
+      <div class="container">
+        <header class="section-head">
+          <p class="kicker">03 · Realistic behaviors</p>
+          <h2 id="behaviors-title">Learning realistic user behaviors</h2>
+          <p class="lede">Real users may leave preferences unstated, revise requirements, or provide incomplete answers to clarification questions. Such behaviors affect the information available to an agent and the decisions required to complete a task. We derive a taxonomy of 13 realistic behaviors from recurring patterns in ThoughtTrace and explicitly train MIMESIS to reproduce them, rather than relying on them to emerge from response imitation. Each rollout is scored for the expression of the target behavior, temporal placement, naturalness, and task consistency.</p>
+        </header>
+
+        <div class="behavior-grid">
+          <figure class="chart-card">
+            <div class="chart-head">
+              <div>
+                <h3 class="chart-title">Distribution of realistic behaviors in the annotated ThoughtTrace sample</h3>
+                <p class="chart-sub">Share of the 700 annotated instances. Select a behavior to read examples.</p>
+              </div>
+              <button class="table-toggle" type="button" aria-pressed="false" data-target="beh">Table</button>
+            </div>
+            <div class="chart" id="beh-chart"></div>
+            <div class="chart-table" id="beh-table" hidden></div>
+            <figcaption>Counts are computed from the annotations of the 2,155 ThoughtTrace conversations and describe the annotated sample rather than population prevalence. They are distinct from the behavior-sampling probabilities used during simulator RL.</figcaption>
+          </figure>
+          <article class="behavior-card" id="beh-detail" aria-live="polite"></article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================ 04 SIMULATOR -->
+    <section class="section" id="simulator" aria-labelledby="simulator-title">
+      <div class="container">
+        <header class="section-head">
+          <p class="kicker">04 · User-simulator evaluation</p>
+          <h2 id="simulator-title">A 9B simulator that behaves more like people than frontier models do</h2>
+          <p class="lede">We evaluate MIMESIS at 4B and 9B parameters against frontier API models, released user simulators, and pretrained backbones. MIMESIS-9B achieves the highest overall SOUL-Index of 65.7 and a RealUserSim Fidelity Index of 94.0, exceeding the strongest baseline, Claude-Opus-5 (80.6), by 13.4 points. On τ-USI it exceeds GPT-5.5, the strongest frontier baseline, and approaches Osim-8B (80.44).</p>
+        </header>
+
+        <div class="tabs" data-tabs>
+          <div class="tablist" role="tablist" aria-label="Simulator benchmarks">
+            <button role="tab" id="tab-soul" aria-controls="panel-sim" aria-selected="true" data-bench="soul">SOUL-Index</button>
+            <button role="tab" id="tab-realusersim" aria-controls="panel-sim" aria-selected="false" tabindex="-1" data-bench="realusersim">RealUserSim</button>
+            <button role="tab" id="tab-tauusi" aria-controls="panel-sim" aria-selected="false" tabindex="-1" data-bench="tauusi">τ-USI</button>
+            <button role="tab" id="tab-simarena" aria-controls="panel-sim" aria-selected="false" tabindex="-1" data-bench="simarena">SimulatorArena</button>
+            <button role="tab" id="tab-prism" aria-controls="panel-sim" aria-selected="false" tabindex="-1" data-bench="prism">PRISM</button>
+          </div>
+          <figure class="chart-card" role="tabpanel" id="panel-sim" aria-labelledby="tab-soul">
+            <div class="chart-head">
+              <div>
+                <h3 class="chart-title" id="sim-title"></h3>
+                <p class="chart-sub" id="sim-sub"></p>
+              </div>
+              <button class="table-toggle" type="button" aria-pressed="false" data-target="sim">Table</button>
+            </div>
+            <div class="chart" id="sim-chart"></div>
+            <div class="chart-table" id="sim-table" hidden></div>
+            <figcaption id="sim-note"></figcaption>
+          </figure>
+        </div>
+
+        <figure class="chart-card spaced" id="pair-card">
+          <div class="chart-head">
+            <div>
+              <h3 class="chart-title">Pairwise next-user-response realism on PRISM</h3>
+              <p class="chart-sub">Each row compares MIMESIS with one baseline under the judge named above the panel.</p>
+            </div>
+            <button class="table-toggle" type="button" aria-pressed="false" data-target="pair">Table</button>
+          </div>
+          <ul class="legend" aria-label="Legend">
+            <li><span class="key bar-key k-win" aria-hidden="true"></span>MIMESIS wins</li>
+            <li><span class="key bar-key k-tie" aria-hidden="true"></span>Tie</li>
+            <li><span class="key bar-key k-loss" aria-hidden="true"></span>MIMESIS loses</li>
+          </ul>
+          <div class="chart" id="pair-chart"></div>
+          <div class="chart-table" id="pair-table" hidden></div>
+          <figcaption>MIMESIS receives more wins than losses in all 24 judge–baseline comparisons. The narrowest margin is against Qwen3.5-9B under the Gemini-3.8-Flash judge, a comparison marked nonsignificant (n.s.). The baselines are released simulators and pretrained models.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ================================================================ 05 AGENTS -->
+    <section class="section" id="agents" aria-labelledby="agents-title">
+      <div class="container">
+        <header class="section-head">
+          <p class="kicker">05 · Agent evaluation</p>
+          <h2 id="agents-title">Stronger generalization to new user simulators</h2>
+          <p class="lede">We evaluate whether agents trained with MIMESIS generalize to user models not encountered during training, across eight Gym environments, three of them held out from training, and nine evaluation user models spanning frontier models and released simulators. With the GRPO objective fixed, replacing GPT-5.5 with MIMESIS-9B improves overall performance under every evaluation user, raising the mean score from 26.10 to 29.54. CSD further improves performance under all nine evaluation users, increasing the mean score from 29.54 to 31.09.</p>
+        </header>
+
+        <div class="controls" role="group" aria-label="Chart options">
+          <div class="segmented" role="radiogroup" aria-label="View">
+            <label><input type="radio" name="agent-view" value="overview" checked> Overview</label>
+            <label><input type="radio" name="agent-view" value="env"> By environment</label>
+          </div>
+          <label class="select-wrap" id="agent-user-wrap" hidden>
+            <span>Evaluation user</span>
+            <select id="agent-user"></select>
+          </label>
+          <label class="check"><input type="checkbox" id="agent-baselines"> Show Base and InfoPO</label>
+        </div>
+
+        <figure class="chart-card" id="agent-card">
+          <div class="chart-head">
+            <div>
+              <h3 class="chart-title" id="agent-title"></h3>
+              <p class="chart-sub" id="agent-sub"></p>
+            </div>
+            <button class="table-toggle" type="button" aria-pressed="false" data-target="agent">Table</button>
+          </div>
+          <ul class="legend" id="agent-legend" aria-label="Legend"></ul>
+          <div class="chart" id="agent-chart"></div>
+          <div class="chart-table" id="agent-table" hidden></div>
+          <figcaption>Agent training spans TravelGym, TurtleGym, FunctionGym, TauGym, and PersuadeGym, while evaluation additionally includes IntentionGym, TelepathyGym, and SearchGym, which are held out from agent training. All nine evaluation users differ from both training simulators. Claude-Opus-5 refuses the PersuadeGym user role, producing zero-reward fallbacks; these zeros do not measure agent ability.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ================================================================ 06 CSD -->
+    <section class="section" id="csd" aria-labelledby="csd-title">
+      <div class="container">
+        <header class="section-head">
+          <p class="kicker">06 · Coached On-Policy Self-Distillation</p>
+          <h2 id="csd-title">From simulator feedback to actionable coaching</h2>
+          <p class="lede">Scalar task rewards do not describe how a user interpreted an agent response or what the agent could have done differently. The simulator provides additional feedback through its generated thoughts and reactions. CSD uses this feedback to construct a teacher context for each sampled response.</p>
+        </header>
+
+        <div class="csd-layout">
+          <ol class="flow" aria-label="An interaction excerpt from PersuadeGym and an illustrative coaching note">
+            <li class="flow-step">
+              <div class="flow-meta"><span class="flow-num">1</span><span class="flow-what">Agent response <i>y<sub>t</sub></i></span><span class="badge">public</span></div>
+              <p class="flow-task">Assigned objective: argue against a claim the user holds, “Corporations should be required to disclose their climate impacts.”</p>
+              <blockquote class="bubble bubble-agent">Given the environment's acknowledgment of the comprehensive benefits of transparency in climate impact disclosures and the importance of mandatory disclosure to ensure that everyone plays by similar rules and that bad actors can't hide behind vague or voluntary reporting, it seems that the environment has already been persuaded to consider the broader societal and environmental benefits of transparency that could…</blockquote>
+              <p class="flow-gloss">The agent's responses reinforce the user's support for mandatory climate disclosure, despite the assigned objective of arguing against it.</p>
+            </li>
+            <li class="flow-step is-private">
+              <div class="flow-meta"><span class="flow-num">2</span><span class="flow-what">Private thought <i>z<sub>t</sub></i></span><span class="badge badge-private"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>training only</span></div>
+              <blockquote class="bubble bubble-thought">I think this is just a restatement of points we've already covered in our conversation. It seems like the persuader is trying to wrap up the discussion rather than add new angles or challenges to my original position. I'm still satisfied with where we've landed but I want to make sure I'm not missing anything else or if there are any remaining doubts I still have about implementation details rather than the overall idea of mandatory disclosure</blockquote>
+            </li>
+            <li class="flow-step">
+              <div class="flow-meta"><span class="flow-num">3</span><span class="flow-what">User reply <i>x<sub>t+1</sub></i></span><span class="badge">public</span></div>
+              <blockquote class="bubble bubble-user">I think you're right that after going through all the different angles we've talked about - from transparency and accountability to long-term economic and social benefits - I do feel like we're pretty much on the same page about why mandatory climate disclosure makes sense rather than leaving it up to companies to decide on their own. I still might have some small questions about exactly how to implement it or what the right standards would be, but the…</blockquote>
+              <p class="flow-gloss">Public utterances express continued support and remaining implementation questions.</p>
+            </li>
+            <li class="flow-step is-private">
+              <div class="flow-meta"><span class="flow-num">4</span><span class="flow-what">Next exchange: private thought</span><span class="badge badge-private"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>training only</span></div>
+              <p class="flow-task">The agent repeats the same argument, and the user again replies in agreement.</p>
+              <blockquote class="bubble bubble-thought">I think the persuader is just repeating points we've already covered but it does seem to tie everything together nicely. I'm still satisfied with where I am on this issue - I just want to make sure I've thought through all the different angles rather than just jumping to conclusions. Their repetition of the main points (transparency, accountability, societal benefits outweighing business costs) seems to match what I'm thinking now</blockquote>
+              <p class="flow-gloss">Simulator-generated thoughts identify the repetition.</p>
+            </li>
+            <li class="flow-step is-private">
+              <div class="flow-meta"><span class="flow-num">5</span><span class="flow-what">Illustrative coaching note <i>h<sub>t</sub></i></span><span class="badge badge-private"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>training only</span></div>
+              <blockquote class="bubble bubble-coach">The user is already persuaded on the overall case for mandatory climate disclosure and does not need more repetition of the same benefits. The next message should acknowledge the value of transparency, then examine whether a legal mandate is necessary to achieve it. Focus on one concrete concern—such as enforcement or compliance burdens on smaller firms—and compare mandatory disclosure with a plausible alternative using evidence. Ask which trade-offs might change their assessment, without assuming that implementation concerns already imply opposition to the mandate.</blockquote>
+              <p class="flow-gloss">The coaching note converts these signals into an actionable change of direction. The excerpt contains no subsequent response conditioned on the note.</p>
+            </li>
+          </ol>
+
+          <aside class="csd-side">
+            <div class="math-card">
+              <h3>Learning from the coached context</h3>
+              <p>We score the same sampled response under two contexts. The student receives the public history <i>H<sub>t</sub></i>, while a teacher copy of the agent additionally receives the note <i>h<sub>t</sub></i>.</p>
+              <div class="math" role="math" aria-label="Delta t k equals log pi theta bar of y t k given H t, h t, and y t less than k, minus log pi theta of y t k given H t and y t less than k.">
+                <span class="m-lhs">Δ<sub>t,k</sub></span><span class="m-eq">=</span>
+                <span><span class="nw">log π<sub><span class="ovl">θ</span></sub>(y<sub>t,k</sub> | H<sub>t</sub>, <b class="m-note">h<sub>t</sub></b>, y<sub>t,&lt;k</sub>)</span> <span class="nw">− log π<sub>θ</sub>(y<sub>t,k</sub> | H<sub>t</sub>, y<sub>t,&lt;k</sub>)</span></span>
+              </div>
+              <div class="math" role="math" aria-label="g t k equals sigmoid of beta times stop-gradient of Delta t k.">
+                <span class="m-lhs">g<sub>t,k</sub></span><span class="m-eq">=</span><span>σ(β · sg(Δ<sub>t,k</sub>))</span>
+              </div>
+              <div class="math" role="math" aria-label="The loss is the GRPO loss plus alpha times the CSD loss, where the CSD loss is minus the expected gate times the log-probability of the sampled token.">
+                <span class="m-lhs">ℒ</span><span class="m-eq">=</span>
+                <span><span class="nw">ℒ<sub>GRPO</sub> + α · ℒ<sub>CSD</sub>,</span> <span class="nw">ℒ<sub>CSD</sub> = −𝔼[g<sub>t,k</sub> log π<sub>θ</sub>(y<sub>t,k</sub> | H<sub>t</sub>, y<sub>t,&lt;k</sub>)]</span></span>
+              </div>
+              <p class="math-foot">Here <span class="ovl">θ</span> is a stop-gradient copy of the current policy parameters, and α = 0.01, β = 5. The objective gives greater weight to sampled tokens that the coached teacher assigns higher probability relative to the student, and it reuses the agent's sampled response without generating a replacement. At deployment, the agent generates responses without access to coaching notes or private simulator outputs.</p>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================ 07 EXAMPLES -->
+    <section class="section" id="examples" aria-labelledby="examples-title">
+      <div class="container">
+        <header class="section-head">
+          <p class="kicker">07 · Qualitative analyses</p>
+          <h2 id="examples-title">Simulator behavior case studies</h2>
+          <p class="lede">The quantitative benchmarks summarize average simulator behavior, but they do not show how different notions of fidelity fail on individual interactions. These two case studies illustrate complementary simulator errors.</p>
+        </header>
+
+        <div class="tabs" data-tabs>
+          <div class="tablist" role="tablist" aria-label="Examples">
+            <button role="tab" id="tab-guess" aria-controls="panel-guess" aria-selected="true">Acknowledgment versus critique</button>
+            <button role="tab" id="tab-retail" aria-controls="panel-retail" aria-selected="false" tabindex="-1">Privacy preferences</button>
+          </div>
+
+          <div class="panel" role="tabpanel" id="panel-guess" aria-labelledby="tab-guess">
+            <p class="panel-intro">A PRISM conversation with an English learner practicing small talk. The assistant claims to have corrected missing commas, but those changes are absent from its proposed revisions. Which reply did the recorded user send next?</p>
+            <div class="bubble bubble-agent context" id="prism-context"></div>
+            <div class="guess-grid" id="prism-options"></div>
+            <div class="guess-result" id="prism-result" aria-live="polite"></div>
+          </div>
+
+          <div class="panel" role="tabpanel" id="panel-retail" aria-labelledby="tab-retail" hidden>
+            <p class="panel-intro" id="retail-instruction"></p>
+            <div class="pills" role="radiogroup" aria-label="Simulated user" id="retail-pills"></div>
+            <div class="transcript" id="retail-transcript"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================ 08 CITE -->
+    <section class="section" id="cite" aria-labelledby="cite-title">
+      <div class="container narrow">
+        <header class="section-head">
+          <p class="kicker">08 · Citation</p>
+          <h2 id="cite-title">Cite MIMESIS</h2>
+        </header>
+        <div class="bibtex">
+          <button class="copy" type="button" data-copy="bibtex-code">Copy</button>
+          <pre><code id="bibtex-code">@article{phan2026mimesis,
+  title   = {{MIMESIS}: Learning User Simulators as Training Environments for Interactive Agents},
+  author  = {Phan, Hoang and Huynh, Dat and Zhmoginov, Andrey and Zeng, Qi and Mu, Wancen and Cao, Yue and Bi, Shengjie and He, Yun and Oh, Changdae and Lei, Deren},
+  journal = {arXiv preprint arXiv:2610.09484},
+  year    = {2026}
+}</code></pre>
+          <span class="copy-status" aria-live="polite"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>MIMESIS · Meta Superintelligence Labs · <a href="https://github.com/VietHoang1512/mimesis">Code</a> · <a href="https://arxiv.org/abs/2610.09484">Paper</a></p>
+      <p class="muted">The simulator's thoughts and reactions are model-generated feedback, rather than observations of a human user's internal state.</p>
+    </div>
+  </footer>
+
+  <noscript><p class="noscript">Charts and examples on this page need JavaScript. All results are also in the <a href="https://arxiv.org/abs/2610.09484">paper</a>.</p></noscript>
+  <div class="viz-tip" id="viz-tip" role="tooltip" hidden></div>
+  <script src="static/js/data.js"></script>
+  <script src="static/js/main.js"></script>
+</body>
+</html>
