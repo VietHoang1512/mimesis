@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://arxiv.org/abs/2610.09484"><img src="https://img.shields.io/badge/arXiv-2610.09484-b31b1b.svg" alt="arXiv"></a>
   <a href="https://viethoang1512.github.io/mimesis/"><img src="https://img.shields.io/badge/Project-page-0062fc.svg" alt="Project page"></a>
-  <a><img src="https://img.shields.io/badge/Models-4B%20%7C%209B-f5a623.svg" alt="Models"></a>
+  <a href="https://huggingface.co/collections/phanviethoang1512/mimesis"><img src="https://img.shields.io/badge/Models-4B%20%7C%209B-f5a623.svg" alt="Models"></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-Apache%202.0-2b6cb0.svg" alt="License: Apache 2.0"></a>
 </p>
 
