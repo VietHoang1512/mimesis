@@ -26,6 +26,12 @@ VLLM_PID=$!
 trap 'kill $VLLM_PID 2>/dev/null || true' EXIT
 until curl -sf "http://127.0.0.1:$AGENT_PORT/v1/models" >/dev/null; do sleep 5; done
 
+# eval.py resolves BOTH schema/interact_tool.yaml and ../data/<env>/test.parquet
+# relative to PROJECT_ROOT, which it defaults to "./". Since this script runs
+# from AGENT_ROOT, leaving it unset looks for agent/schema/ (does not exist)
+# and for data/ one level above the repo. Point it at eval/ so schema resolves
+# and ../data lands on $AGENT_DATA_DIR.
+export PROJECT_ROOT="$AGENT_ROOT/eval"
 export EVAL_OUTPUT_DIR="$AGENT_EVAL_DIR"
 export AGENT_BASE_URL="http://127.0.0.1:$AGENT_PORT/v1"
 mkdir -p "$AGENT_EVAL_DIR/outputs"

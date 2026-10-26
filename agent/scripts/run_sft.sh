@@ -3,8 +3,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/env.sh"
 
-BASE_MODEL="${1:?usage: run_sft.sh BASE_MODEL_PATH}"
-LF_DIR="${LF_DIR:?set LF_DIR to your LLaMA-Factory checkout}"
+# Stage 1, the supervised warm start. See sft/README.md.
+#   bash scripts/run_sft.sh /path/to/Qwen3-8B [hydra-style overrides...]
+# Needs llamafactory-cli on PATH (pip install -e your LLaMA-Factory checkout).
+BASE_MODEL="${1:?usage: run_sft.sh BASE_MODEL_PATH [overrides...]}"
+shift                      # remaining args are passed through as overrides
 OUT="${OUT:-$AGENT_MODEL_DIR/sft/qwen3-8b}"
 
 llamafactory-cli train "$AGENT_ROOT/sft/qwen3_customized.yaml" \
