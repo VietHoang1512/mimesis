@@ -7,10 +7,17 @@
 *.out
 *.err
 
-# Checkpoints and local data the release does not carry
-**/models/
-**/data/
-**/results/
+# Checkpoints and large corpora the release does not carry.
+# NB: these are anchored with a leading "/" on purpose. Unanchored `**/models/`
+# and `**/data/` also match simulator/verl/models/ and simulator/verl/trainer/
+# config/data/, which are part of the vendored verl package.
+/simulator/models/
+/simulator/outputs/
+/simulator/results/
+/simulator/data/sim_rl_data/
+/simulator/data/sim_eval_data/
+/simulator/data/osim_mid_training/
+/simulator/data/thoughttrace/
 
 # Python
 __pycache__/

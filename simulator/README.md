@@ -37,6 +37,27 @@ bash scripts/run_trl_sft.sh    # stage 2: SFT on ThoughtTrace reasoning traces
 bash scripts/run_rl.sh         # stage 3: RL over the 24-task mixture
 ```
 
+### Chat templates
+
+The supervised stages train under different templates, which is what turns
+reasoning off for mid-training and back on for ThoughtTrace SFT.
+
+| Stage | Template | Thinking |
+|---|---|---|
+| Mid-training | `sft/chatml_midtraining.jinja` | off |
+| ThoughtTrace SFT | `sft/qwen3_5_think_training.jinja` | on |
+
+The mid-training template is minimal ChatML: roles and content, nothing else.
+Having no `<think>` construct is what disables reasoning for the stage. The
+`Qwen3.5-*-CHATML` base checkpoints carry it as their own `chat_template.jinja`,
+so `run_sft.sh` inherits it from `MODEL_PATH`; copy it in when starting from a
+stock `Qwen/Qwen3.5-*` checkpoint.
+
+ThoughtTrace SFT restores Qwen3.5's own template, then trains under
+`qwen3_5_think_training.jinja`: that template plus `{% generation %}` markers for
+assistant-only loss, with `<think>` kept in history so served context matches
+trained context.
+
 ## Evaluate
 
 ```bash
@@ -56,7 +77,7 @@ in `eval/simarena/SETUP.md` include cloning `microsoft/SimulatorArena`, applying
 
 ```
 agents/      19 task agent loops + reward functions; base_agent.py routes data_source
-sft/         mid-training + ThoughtTrace SFT: dataset, role swap, TRL entry point
+sft/         mid-training + ThoughtTrace SFT: dataset, role swap, chat templates
 verl/        vendored verl v0.7.0 fork
 llm/         judge / partner client (see llm/README.md)
 scoring/     aggregate.py, aggregate_seeds.py, export_csv.py
