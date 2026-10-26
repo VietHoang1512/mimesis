@@ -76,29 +76,25 @@ max_response_length=${MAX_RESPONSE_LENGTH:-$((1024 * 8))}
 n_resp_per_prompt_val=1
 infer_tp=2
 # In-flight agent loops (divided across rollout.agent.num_workers by the harness, see
-# verl/experimental/agent_loop/agent_loop.py:476). 512 is right for a local vLLM engine,
-# which is the only thing bounding it there, but an API user-simulator is metered by the
-# provider instead: at 512 the Anthropic upstream returned
-#   rate limit exceeded ... up-anthropic::w-60s: 517/475 in 60s
-#   rate limit exceeded ... up-anthropic::w-600s: 2451/2450 in 600s
-# and the 2026-08-11 claude-opus-5 / claude-sonnet-5 evals lost 27% of rollouts to
-# zero-turn conversations. Overridable so API runs can drop below quota without moving
-# the local default (run_eval_api.sh sets it).
+# verl/experimental/agent_loop/agent_loop.py:476). 512 suits a local vLLM engine, which is
+# the only thing bounding concurrency in that mode. An API user-simulator is instead
+# metered by the provider's request rate: once the limit is hit the rejected calls surface
+# as zero-turn conversations that score 0, so the default is overridable and API runs set
+# it lower (see run_eval_api.sh).
 max_concurrent_rollouts=${MAX_CONCURRENT_ROLLOUTS:-512}
 
 export n_gpus=$(echo "$CUDA_VISIBLE_DEVICES" | awk -F',' '{print NF}')
 echo "Using $n_gpus GPU" "$CUDA_VISIBLE_DEVICES"
 # ── Setup ─────────────────────────────────────────────────────────────────────
 export HF_HOME=$OUTPUT_DIR/hf_cache
-# Resolve models from the local cache only. Egress to huggingface.co is blocked here (the
-# x2p proxy answers CONNECT with 403), and recent transformers calls list_repo_templates()
-# to look for a chat template even when every file is already cached -- that call is not
-# offline-safe, so it hangs until httpx.ConnectTimeout and takes the whole run with it.
-# Job 430209 lost all 6 runs that way, dying in hf_tokenizer() right after config
-# validation. run_eval_api.sh is the exposed one because its ACTOR_MODEL_PATH is a hub id
-# (Qwen/Qwen3-4B-Base, tokenizer only) rather than a filesystem path.
-# If a model is genuinely missing this now fails with a clear cache-miss instead of a
-# 15-minute network hang; populate the cache from a node with egress first.
+# Resolve models from the local cache only. Where egress to huggingface.co is blocked,
+# recent transformers still calls list_repo_templates() to look for a chat template even
+# when every file is already cached; that call is not offline-safe, so it hangs until the
+# connection times out and takes the whole run with it (inside hf_tokenizer(), right after
+# config validation). Runs whose ACTOR_MODEL_PATH is a hub id rather than a filesystem path
+# -- such as the tokenizer-only model used by run_eval_api.sh -- are the exposed ones.
+# With this set, a genuinely missing model fails fast with a clear cache miss instead of a
+# network hang; populate the cache from a node with egress first.
 export HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-1}
 export WANDB_DIR=$OUTPUT_DIR/wandb
 mkdir -p $OUTPUT_DIR/hf_cache $OUTPUT_DIR/wandb $OUTPUT_DIR/$EXPERIMENT_NAME

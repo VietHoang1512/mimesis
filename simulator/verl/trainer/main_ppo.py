@@ -160,7 +160,7 @@ class TaskRunner:
         else:
             raise NotImplementedError
 
-        # TODO(OPD)@Weiwei [Done] allow overriding worker cls via actor_rollout_ref.cls config
+        # actor_rollout_ref.cls, when set, overrides the worker class selected above.
         custom_cls_path = config.actor_rollout_ref.get("cls", None)
         if custom_cls_path:
             import importlib

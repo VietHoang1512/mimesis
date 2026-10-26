@@ -92,8 +92,7 @@ class NaiveRewardManager:
                     # Per-turn mean, i.e. the `micro_avg` that eval/eval.py computes
                     # in post_process_results, which is the metric InfoPO's paper
                     # table reports. Logged ALONGSIDE the episode-sum `score`, never
-                    # instead of it: the two differ by the turn count, so TravelGym
-                    # reads ~0.3 here and ~2.9 above.
+                    # instead of it: the two differ by a factor of the turn count.
                     # Lands at val-aux/<gym>/score_normalized/mean@1 -- val-aux, not
                     # val-core, because core_var is "reward" (ray_trainer.py:713).
                     # That keeps it out of `core_metrics`, so best_valid_score and

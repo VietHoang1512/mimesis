@@ -105,7 +105,7 @@ class AdvantageEstimator(str, Enum):
     GPG = "gpg"
     RLOO_VECTORIZED = "rloo_vectorized"
     GRPO_VECTORIZED = "grpo_vectorized"
-    FOLDGRPO = "foldgrpo"  # TODO@Weiwei [Done]: GRPO + gen_uid de-dup for multi-agent
+    FOLDGRPO = "foldgrpo"  # GRPO with gen_uid de-duplication for multi-agent rollouts
 
 
 ADV_ESTIMATOR_REGISTRY: dict[str, Any] = {}
@@ -329,7 +329,7 @@ def compute_grpo_outcome_advantage(
     return scores, scores
 
 
-@register_adv_est(AdvantageEstimator.FOLDGRPO)  # TODO@Weiwei [Done]: GRPO + gen_uid de-dup
+@register_adv_est(AdvantageEstimator.FOLDGRPO)
 def compute_foldgrpo_advantage(
     token_level_rewards: torch.Tensor,
     response_mask: torch.Tensor,
@@ -338,7 +338,7 @@ def compute_foldgrpo_advantage(
     epsilon: float = 1e-6,
     norm_adv_by_std_in_grpo: bool = True,
     config: Optional[AlgoConfig] = None,
-    agent_role: Optional[np.ndarray] = None,  # TODO@Weiwei: per-role GRPO grouping; None=primary/default
+    agent_role: Optional[np.ndarray] = None,  # per-role grouping; None groups by uid alone
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """GRPO with gen_uid de-duplication for multi-agent rollouts.
 
@@ -356,7 +356,7 @@ def compute_foldgrpo_advantage(
     with torch.no_grad():
         for i in range(len(scores)):
             uid = index[i]
-            # TODO@Weiwei: use (uid, role) as group key when agent_role is provided
+            # Group key is (uid, role) when agent_role is provided, otherwise uid alone.
             group_key = (
                 (uid, str(agent_role[i]) if agent_role[i] is not None else "") if agent_role is not None else uid
             )
@@ -2023,10 +2023,7 @@ def compute_sft_loss(
     return loss, {"sft/nll_loss": loss.detach().item()}
 
 
-# TODO(OPD)@Weiwei [Done] token-level log-prob advantage for on-policy distillation.
-# Future: replace with top-k logit KL loss injected in dp_actor.py update_policy
-# (requires storing teacher_topk_ids + teacher_topk_probs in batch and accessing
-# student logits directly, which cannot be expressed as a scalar advantage).
+# Token-level log-prob advantage for on-policy distillation.
 def compute_opd_advantage(
     teacher_log_prob: torch.Tensor,
     student_log_prob: torch.Tensor,

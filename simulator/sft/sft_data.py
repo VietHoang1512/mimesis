@@ -51,7 +51,7 @@ def _get_process_fn(data_source: str):
         "tom_socialiqa": process_no_swap,
         "tom_mindgames": process_no_swap,
         "tom_moralstories": process_no_swap,
-        # Format-matched ToM with OpenAI CoT
+        # Format-matched ToM with distilled chain-of-thought
         "tom_fantom": process_no_swap,
         "tom_hitom": process_no_swap,
         "tom_paratomi": process_no_swap,

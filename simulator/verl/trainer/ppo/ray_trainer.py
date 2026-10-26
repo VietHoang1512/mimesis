@@ -244,7 +244,7 @@ def compute_advantage(
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
-    elif adv_estimator == AdvantageEstimator.FOLDGRPO:  # TODO@Weiwei [Done]: GRPO + gen_uid de-dup for multi-agent
+    elif adv_estimator == AdvantageEstimator.FOLDGRPO:  # GRPO with gen_uid de-duplication for multi-agent
         assert "gen_uid" in data.non_tensor_batch, "FOLDGRPO requires gen_uid in non_tensor_batch"
         advantages, returns = core_algos.compute_foldgrpo_advantage(
             token_level_rewards=data.batch["token_level_rewards"],
@@ -253,7 +253,7 @@ def compute_advantage(
             gen_uid=data.non_tensor_batch["gen_uid"],
             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
             config=config,
-            agent_role=data.non_tensor_batch.get("agent_role"),  # TODO@Weiwei: per-role grouping; None=disabled
+            agent_role=data.non_tensor_batch.get("agent_role"),  # per-role grouping; None disables it
         )
         data.batch["advantages"] = advantages
         data.batch["returns"] = returns
@@ -346,9 +346,9 @@ class RayPPOTrainer:
         self.use_reward_loop = self.config.reward_model.use_reward_loop
 
         self.use_critic = need_critic(self.config)
-        # TODO(OPD)@Weiwei [Done] enable on-policy distillation via algorithm.use_opd
+        # algorithm.use_opd enables on-policy distillation.
         self.use_opd = self.config.algorithm.get("use_opd", False)
-        # TODO@Weiwei[OPD-TopK] 4-layer gating: use_opd, opd_topk>1, use_fused_kernels, use_topk_kernel
+        # Top-k OPD requires all four of: use_opd, opd_topk > 1, use_fused_kernels, use_topk_kernel.
         opd_topk = self.config.algorithm.get("opd_topk", 1)
         use_fused = self.config.actor_rollout_ref.model.get("use_fused_kernels", False)
         use_topk_kernel = self.config.algorithm.get("use_topk_kernel", False)
@@ -675,8 +675,8 @@ class RayPPOTrainer:
             }
             print(f"test_gen_batch meta info: {test_gen_batch.meta_info}")
 
-            # TODO@Weiwei [Done]: set gen_uid per rollout slot so multi-agent sub-seqs can be
-            # aggregated back to one score per rollout (mirrors training loop gen_uid assignment).
+            # One gen_uid per rollout slot, so multi-agent sub-sequences can be aggregated back
+            # to one score per rollout. Mirrors the gen_uid assignment in the training loop.
             test_gen_batch.non_tensor_batch["gen_uid"] = np.array(
                 [str(uuid.uuid4()) for _ in range(len(test_gen_batch))], dtype=object
             )
@@ -698,7 +698,7 @@ class RayPPOTrainer:
 
             print("validation generation end")
 
-            # TODO@Weiwei [Done]: uid-aware expansion for multi-agent (variable k sub-seqs per rollout)
+            # Expansion is uid-aware, since a multi-agent rollout emits a variable number of sub-sequences.
             val_rollout_n = self.config.actor_rollout_ref.rollout.val_kwargs.get("n", 1)
             gen_out_uid = test_output_gen_batch.non_tensor_batch.get("uid")
             if gen_out_uid is not None and len(test_output_gen_batch) != len(test_batch) * val_rollout_n:
@@ -725,9 +725,10 @@ class RayPPOTrainer:
             scores = reward_tensor.sum(-1).cpu().tolist()
             reward_extra_info = result.get("reward_extra_info", {})
 
-            # TODO@Weiwei [Done]: aggregate sub-seqs per gen_uid → one score per rollout slot.
-            # Multi-agent: k sub-seqs share same gen_uid (inherited from input); sum their rewards
-            # so process_validation_metrics sees mean@n (n rollout attempts) not mean@k (k sub-seqs).
+            # Aggregate sub-sequences per gen_uid into one score per rollout slot. In a multi-agent
+            # rollout the k sub-sequences share a gen_uid inherited from the input, so collapsing them
+            # here makes process_validation_metrics report mean@n (rollout attempts) rather than
+            # mean@k (sub-sequences).
             gen_uid_arr = test_batch.non_tensor_batch.get("gen_uid")
             if gen_uid_arr is not None:
                 ordered_guids, seen_guids_set = [], set()
@@ -1019,7 +1020,7 @@ class RayPPOTrainer:
         # we should create rollout at the end so that vllm can have a better estimation of kv cache memory
         self.actor_rollout_wg = all_wg[str(actor_role)]
         self.actor_rollout_wg.init_model()
-        if self.use_opd:  # TODO(OPD)@Weiwei [Done] init teacher after actor model is ready
+        if self.use_opd:  # the teacher is initialized once the actor model is ready
             self.actor_rollout_wg.init_opd_teacher()
 
         if self.ref_in_actor:
@@ -1216,7 +1217,7 @@ class RayPPOTrainer:
         return max(dp_rank_mapping) + 1
 
     def _pad_dummy_sample(self, batch: DataProto, pad_to: int) -> tuple[DataProto, str]:
-        """TODO@Weiwei [Done]: pad batch to multiple of pad_to with zero-mask dummies."""
+        """Pad the batch to a multiple of pad_to with zero-mask dummy samples."""
         n_pad = pad_to - len(batch) % pad_to
         dummy = deepcopy(batch[0:1])
         dummy.batch["response_mask"] = torch.zeros_like(dummy.batch["response_mask"])
@@ -1335,7 +1336,7 @@ class RayPPOTrainer:
         batch.meta_info["multi_turn"] = rollout_config.multi_turn.enable
         # TODO: Make "temperature" single source of truth from generation.
         batch.meta_info["temperature"] = rollout_config.temperature
-        if self.use_topk_opd:  # TODO@Weiwei[OPD-TopK] pass opd_alpha for top-k KL loss scaling
+        if self.use_topk_opd:  # the actor reads these to scale the top-k KL loss
             batch.meta_info["opd_alpha"] = self.config.algorithm.get("opd_alpha", 1.0)
             batch.meta_info["opd_clip"] = self.config.algorithm.get("opd_clip", 5.0)
         # update actor
@@ -1370,7 +1371,7 @@ class RayPPOTrainer:
         return actor_output
 
     def _compute_opd_advantage(self, batch: DataProto) -> dict:
-        """TODO(OPD)@Weiwei [Done] compute per-token OPD advantage and add to batch advantages.
+        """Compute the per-token OPD advantage and add it to the batch advantages.
 
         Teacher log probs computed on OPD subset only (samples with non-empty teacher_prompt_ids).
         A_teacher[t] = log pi_teacher(a_t) - log pi_student(a_t), zero for non-OPD samples.
@@ -1387,7 +1388,8 @@ class RayPPOTrainer:
         teacher_output = self.actor_rollout_wg.compute_teacher_log_probs(batch)
         batch.union(teacher_output)
 
-        # TODO@Weiwei[OPD-TopK] in topk mode, skip single-token OPD advantage (top-k KL loss in update_policy replaces it)
+        # In top-k mode the single-token OPD advantage is skipped; the top-k KL loss added in
+        # update_policy takes its place.
         if self.use_topk_opd:
             return {"opd/mode": "topk"}
 
@@ -1546,7 +1548,7 @@ class RayPPOTrainer:
                 gen_batch_output = gen_batch.repeat(
                     repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
                 )
-                # TODO@Weiwei [Done]: assign gen_uid per rollout slot; multi-agent sub-seqs inherit via extra_fields
+                # One gen_uid per rollout slot; multi-agent sub-sequences inherit it via extra_fields.
                 gen_batch_output.non_tensor_batch["gen_uid"] = np.array(
                     [str(uuid.uuid4()) for _ in range(len(gen_batch_output))], dtype=object
                 )
@@ -1598,7 +1600,7 @@ class RayPPOTrainer:
                             batch.batch["reward_baselines"] = reward_baseline_tensor
 
                             del rm_scores, gen_baseline_batch, gen_baseline_output
-                    # TODO@Weiwei [Done]: uid-aware expansion supports variable k sub-seqs per rollout
+                    # Expansion is uid-aware, so a rollout may emit a variable number of sub-sequences.
                     rollout_n = self.config.actor_rollout_ref.rollout.n
                     gen_out_uid = gen_batch_output.non_tensor_batch.get("uid")
                     if gen_out_uid is not None and len(gen_batch_output) != len(batch) * rollout_n:
@@ -1613,7 +1615,7 @@ class RayPPOTrainer:
                     if "response_mask" not in batch.batch.keys():
                         batch.batch["response_mask"] = compute_response_mask(batch)
 
-                    # TODO@Weiwei [Done]: pad main batch to be divisible by dp_size.
+                    # Pad the main batch to be divisible by dp_size.
                     # _balance_batch, _compute_old_log_prob, _compute_ref_log_prob, _compute_values,
                     # _update_actor, and _update_critic all dispatch to workers that require
                     # batch_size % dp_size == 0. Multi-agent rollouts produce variable-length
@@ -1668,7 +1670,7 @@ class RayPPOTrainer:
                         )
                     else:  # Recompute old_log_probs
                         with marked_timer("old_log_prob", timing_raw, color="blue"):
-                            if self.use_topk_opd:  # TODO@Weiwei[OPD-TopK] extract student topk ids with old log probs
+                            if self.use_topk_opd:  # student top-k ids come out of the same forward pass
                                 old_log_prob = self.actor_rollout_wg.compute_old_log_prob_and_topk(batch)
                                 old_log_prob_mfu = 0
                             else:
@@ -1758,7 +1760,7 @@ class RayPPOTrainer:
                             config=self.config.algorithm,
                         )
 
-                    # TODO(OPD)@Weiwei [Done] add per-token teacher advantage after GRPO advantage
+                    # The per-token teacher advantage is added on top of the GRPO advantage.
                     if self.use_opd:
                         with marked_timer("opd_advantage", timing_raw, color="teal"):
                             opd_metrics = self._compute_opd_advantage(batch)
@@ -1779,7 +1781,7 @@ class RayPPOTrainer:
                         actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
                         metrics.update(actor_output_metrics)
 
-                        # TODO(OPD)@Weiwei [Done] EMA update after actor weights change
+                        # The EMA teacher is refreshed once the actor weights have changed.
                         if self.use_opd:
                             self.actor_rollout_wg.update_teacher_ema()
 

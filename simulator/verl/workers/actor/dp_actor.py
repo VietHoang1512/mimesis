@@ -306,9 +306,10 @@ class DataParallelPPOActor(BasePPOActor):
 
             return entropy, log_probs
 
-    # TODO@Weiwei[OPD-TopK] forward with gather_ids for top-k KL loss during update_policy
     def _forward_micro_batch_topk(self, micro_batch, temperature, gather_ids):
-        """Forward with top-k gather. Only supports use_fused_kernels=True.
+        """Forward with top-k gather, used for the top-k KL loss in update_policy.
+
+        Only supports use_fused_kernels=True.
 
         Args:
             micro_batch: same as _forward_micro_batch
@@ -589,12 +590,11 @@ class DataParallelPPOActor(BasePPOActor):
         return log_probs, entropys
 
     @GPUMemoryLogger(role="dp actor", logger=logger)
-    # TODO@Weiwei[OPD-TopK] compute old log probs + extract student top-k ids in one forward pass
     def compute_log_prob_and_topk(self, data: DataProto, extract_topk_k: int):
-        """Like compute_log_prob, but also extracts student's top-k token ids.
+        """Like compute_log_prob, but also extracts the student's top-k token ids.
 
         Piggybacks on the same forward pass via extract_topk_k kwarg.
-        Requires use_fused_kernels=True (4-layer gating ensures this).
+        Requires use_fused_kernels=True, which the trainer's top-k OPD gating guarantees.
 
         Returns:
             log_probs: (batch_size, response_length)
@@ -792,7 +792,7 @@ class DataParallelPPOActor(BasePPOActor):
         # Include rollout_log_probs for computing rollout_corr metrics in bypass mode
         if "rollout_log_probs" in data.batch.keys():
             select_keys.append("rollout_log_probs")
-        # TODO@Weiwei[OPD-TopK] detect top-k OPD data and use topk forward + KL loss
+        # student_topk_ids in the batch selects the top-k forward plus KL loss path.
         use_topk_opd = "student_topk_ids" in data.batch.keys()
         if use_topk_opd:
             select_keys.extend(["student_topk_ids", "teacher_topk_log_probs", "opd_mask"])
@@ -921,7 +921,7 @@ class DataParallelPPOActor(BasePPOActor):
                         metrics["actor/kl_loss"] += kl_loss.detach().item() * loss_scale_factor
                         micro_batch_metrics["actor/kl_coef"] = self.config.kl_loss_coef
 
-                    # TODO@Weiwei[OPD-TopK] forward KL loss at student's top-k positions
+                    # Forward KL loss at the student's top-k positions.
                     if use_topk_opd and gathered_log_probs is not None:
                         teacher_topk_lp = model_inputs["teacher_topk_log_probs"]  # (bsz, resp_len, k)
                         opd_mask = model_inputs["opd_mask"]  # (bsz,)

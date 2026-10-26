@@ -1,4 +1,4 @@
-"""Drive usersim-behavior rollouts end to end against the live gateway, with no verl."""
+"""Drive usersim-behavior rollouts end to end against a live model endpoint, with no verl."""
 
 from __future__ import annotations
 

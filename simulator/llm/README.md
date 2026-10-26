@@ -9,7 +9,7 @@ conversational partner (the assistant the simulated user talks to) and a judge
 ```bash
 export OPENAI_AGENT_BASE_URL=http://localhost:8000/v1   # any OpenAI-compatible endpoint
 export OPENAI_AGENT_API_KEY=...                         # "EMPTY" for a local server
-export OPENAI_MODEL_NAME=gpt-5-5                        # judge / partner model id
+export OPENAI_MODEL_NAME=<model-id>                     # judge / partner model id
 ```
 
 Any server that implements the OpenAI chat-completions API works: vLLM, SGLang,
@@ -17,8 +17,8 @@ a hosted provider, or your own gateway. The simulator under evaluation is served
 separately (see `scripts/env.sh`); this module handles only the partner and the
 judge.
 
-The published results used a judge and partner equivalent to `gpt-5.5`, with
-`OPENAI_AGENT_REASONING_EFFORT=low`. Providers interpret this setting
+The published results used a frontier-class model as both judge and partner,
+with `OPENAI_AGENT_REASONING_EFFORT=low`. Providers interpret this setting
 differently (some ignore it, some map it to a token budget), so a judge on a
 different provider is not necessarily comparable even at the same nominal
 setting.

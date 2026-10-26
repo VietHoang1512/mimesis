@@ -16,12 +16,12 @@ index 456d0c4..fc89945 100644
 +        if _s:
 +            self.seed = int(_s)
 +
-+        # Simulator-call timeout. The 10s default predates thinking simulators and
-+        # slower hosted routes: a large hosted reasoning model answers in 14-17s
-+        # and a fast hosted model in ~6s, so a 10s ceiling fails the slower one
-+        # on EVERY call in this gym. The failure is silent -- eval.py's rollout()
-+        # catches the TimeoutError and returns [0], which is indistinguishable
-+        # in the results from an agent that genuinely scored nothing.
++        # Simulator-call timeout. The 10s default predates thinking simulators,
++        # whose replies can take longer than that on every call in this gym. The
++        # failure is silent -- eval.py's rollout() catches the TimeoutError and
++        # returns [0], which is indistinguishable in the results from an agent
++        # that genuinely scored nothing -- so take the ceiling from
++        # USERRL_SIM_TIMEOUT rather than leave it where a slow reply trips it.
 +        _t = os.environ.get("USERRL_SIM_TIMEOUT")
 +        if _t:
 +            self.timeout = type(self.timeout)(float(_t))
@@ -46,12 +46,12 @@ index 213ddb7..e25bb81 100644
 +        if _s:
 +            self.seed = int(_s)
 +
-+        # Simulator-call timeout. The 10s default predates thinking simulators and
-+        # slower hosted routes: a large hosted reasoning model answers in 14-17s
-+        # and a fast hosted model in ~6s, so a 10s ceiling fails the slower one
-+        # on EVERY call in this gym. The failure is silent -- eval.py's rollout()
-+        # catches the TimeoutError and returns [0], which is indistinguishable
-+        # in the results from an agent that genuinely scored nothing.
++        # Simulator-call timeout. The 10s default predates thinking simulators,
++        # whose replies can take longer than that on every call in this gym. The
++        # failure is silent -- eval.py's rollout() catches the TimeoutError and
++        # returns [0], which is indistinguishable in the results from an agent
++        # that genuinely scored nothing -- so take the ceiling from
++        # USERRL_SIM_TIMEOUT rather than leave it where a slow reply trips it.
 +        _t = os.environ.get("USERRL_SIM_TIMEOUT")
 +        if _t:
 +            self.timeout = type(self.timeout)(float(_t))
@@ -77,14 +77,14 @@ index d1a13ea..023d21d 100644
 +def _coerce_model_json(response_text, keys=()):
 +    """Parse model output that is *meant* to be JSON but often is not.
 +
-+    An earlier run still failed 283 times after json.loads+literal_eval were added,
-+    because the model emits shapes that defeat BOTH:
++    json.loads and literal_eval both reject two shapes the model emits often,
++    which is what the extra tiers below exist for:
 +      * curly quotes as delimiters -- {\u2018response\u2019: \u2018...\u2019}
 +        -> "invalid character '\u2019' (U+2019)"
 +      * single-quoted dicts whose values contain apostrophes -- {'response':
 +        'I'm glad'} -> "unterminated string literal" / "invalid syntax"
-+    Every failure was swallowed into a canned reply worth 0.0 reward, so the gym
-+    scored zero while the simulator was answering perfectly well.
++    A parse failure here is silent: the caller substitutes a canned reply
++    carrying 0.0 reward, so the gym scores zero on a turn the simulator answered.
 +
 +    Four tiers, cheapest first. The last one does not parse structure at all --
 +    it pulls the named keys out with a regex, which survives any quoting the
@@ -161,12 +161,12 @@ index 25746cd..dab3dc9 100644
 +        if _s:
 +            self.seed = int(_s)
 +
-+        # Simulator-call timeout. The 10s default predates thinking simulators and
-+        # slower hosted routes: a large hosted reasoning model answers in 14-17s
-+        # and a fast hosted model in ~6s, so a 10s ceiling fails the slower one
-+        # on EVERY call in this gym. The failure is silent -- eval.py's rollout()
-+        # catches the TimeoutError and returns [0], which is indistinguishable
-+        # in the results from an agent that genuinely scored nothing.
++        # Simulator-call timeout. The 10s default predates thinking simulators,
++        # whose replies can take longer than that on every call in this gym. The
++        # failure is silent -- eval.py's rollout() catches the TimeoutError and
++        # returns [0], which is indistinguishable in the results from an agent
++        # that genuinely scored nothing -- so take the ceiling from
++        # USERRL_SIM_TIMEOUT rather than leave it where a slow reply trips it.
 +        _t = os.environ.get("USERRL_SIM_TIMEOUT")
 +        if _t:
 +            self.timeout = type(self.timeout)(float(_t))
@@ -185,14 +185,14 @@ index 90cb975..82710cf 100644
 +def _coerce_model_json(response_text, keys=()):
 +    """Parse model output that is *meant* to be JSON but often is not.
 +
-+    An earlier run still failed 283 times after json.loads+literal_eval were added,
-+    because the model emits shapes that defeat BOTH:
++    json.loads and literal_eval both reject two shapes the model emits often,
++    which is what the extra tiers below exist for:
 +      * curly quotes as delimiters -- {\u2018response\u2019: \u2018...\u2019}
 +        -> "invalid character '\u2019' (U+2019)"
 +      * single-quoted dicts whose values contain apostrophes -- {'response':
 +        'I'm glad'} -> "unterminated string literal" / "invalid syntax"
-+    Every failure was swallowed into a canned reply worth 0.0 reward, so the gym
-+    scored zero while the simulator was answering perfectly well.
++    A parse failure here is silent: the caller substitutes a canned reply
++    carrying 0.0 reward, so the gym scores zero on a turn the simulator answered.
 +
 +    Four tiers, cheapest first. The last one does not parse structure at all --
 +    it pulls the named keys out with a regex, which survives any quoting the
@@ -272,16 +272,16 @@ index dd553e5..18b8272 100644
 +# SEARCH_OFFLINE=1 runs SearchGym with the search tool stubbed out, turning it
 +# into a closed-book two-hop QA eval. Scoring is untouched: Bamboogle ships gold
 +# answers and _handle_answer_action compares against them without consulting
-+# search at all.
++# search at all. search_serper() returns OFFLINE_NOTICE for every query.
 +#
-+# The stub text matters more than it looks. When the key merely EXPIRES, every
-+# call raises, _handle_search_action catches it and hands back "Search failed:
-+# ...", and the agent -- with no way to know the tool is permanently gone --
-+# retries until its turn budget is spent. One early run showed exactly that:
-+# 25,192 "Not enough credits" responses against 13 successes, i.e. a
-+# measurement of retry behaviour under a broken tool, not of the task itself.
-+# Saying so plainly, once, lets the agent stop and answer, which is the
-+# thing we actually want to measure.
++# The stub text matters more than it looks. When a call fails instead of being
++# stubbed -- an expired or exhausted key -- it raises, _handle_search_action
++# catches the error and hands back "Search failed: ...", and the agent, with
++# no way to know the tool is permanently gone, retries until its turn budget
++# is spent. The eval then measures retry behaviour under a broken tool rather
++# than the task itself. Stating the unavailability plainly, once, lets the
++# agent stop and answer, which is the behaviour a closed-book score is meant
++# to reflect.
 +OFFLINE = os.getenv("SEARCH_OFFLINE", "0") == "1"
 +OFFLINE_NOTICE = os.getenv(
 +    "SEARCH_OFFLINE_NOTICE",
@@ -345,12 +345,12 @@ index 5ece55b..36feb3e 100644
 +        if _s:
 +            self.seed = int(_s)
 +
-+        # Simulator-call timeout. The 10s default predates thinking simulators and
-+        # slower hosted routes: a large hosted reasoning model answers in 14-17s
-+        # and a fast hosted model in ~6s, so a 10s ceiling fails the slower one
-+        # on EVERY call in this gym. The failure is silent -- eval.py's rollout()
-+        # catches the TimeoutError and returns [0], which is indistinguishable
-+        # in the results from an agent that genuinely scored nothing.
++        # Simulator-call timeout. The 10s default predates thinking simulators,
++        # whose replies can take longer than that on every call in this gym. The
++        # failure is silent -- eval.py's rollout() catches the TimeoutError and
++        # returns [0], which is indistinguishable in the results from an agent
++        # that genuinely scored nothing -- so take the ceiling from
++        # USERRL_SIM_TIMEOUT rather than leave it where a slow reply trips it.
 +        _t = os.environ.get("USERRL_SIM_TIMEOUT")
 +        if _t:
 +            self.timeout = type(self.timeout)(float(_t))
@@ -369,14 +369,14 @@ index 7246422..2b9049a 100644
 +def _coerce_model_json(response_text, keys=()):
 +    """Parse model output that is *meant* to be JSON but often is not.
 +
-+    An earlier run still failed 283 times after json.loads+literal_eval were added,
-+    because the model emits shapes that defeat BOTH:
++    json.loads and literal_eval both reject two shapes the model emits often,
++    which is what the extra tiers below exist for:
 +      * curly quotes as delimiters -- {\u2018response\u2019: \u2018...\u2019}
 +        -> "invalid character '\u2019' (U+2019)"
 +      * single-quoted dicts whose values contain apostrophes -- {'response':
 +        'I'm glad'} -> "unterminated string literal" / "invalid syntax"
-+    Every failure was swallowed into a canned reply worth 0.0 reward, so the gym
-+    scored zero while the simulator was answering perfectly well.
++    A parse failure here is silent: the caller substitutes a canned reply
++    carrying 0.0 reward, so the gym scores zero on a turn the simulator answered.
 +
 +    Four tiers, cheapest first. The last one does not parse structure at all --
 +    it pulls the named keys out with a regex, which survives any quoting the
@@ -453,12 +453,12 @@ index 9a3ce26..4006612 100644
 +        if _s:
 +            self.seed = int(_s)
 +
-+        # Simulator-call timeout. The 10s default predates thinking simulators and
-+        # slower hosted routes: a large hosted reasoning model answers in 14-17s
-+        # and a fast hosted model in ~6s, so a 10s ceiling fails the slower one
-+        # on EVERY call in this gym. The failure is silent -- eval.py's rollout()
-+        # catches the TimeoutError and returns [0], which is indistinguishable
-+        # in the results from an agent that genuinely scored nothing.
++        # Simulator-call timeout. The 10s default predates thinking simulators,
++        # whose replies can take longer than that on every call in this gym. The
++        # failure is silent -- eval.py's rollout() catches the TimeoutError and
++        # returns [0], which is indistinguishable in the results from an agent
++        # that genuinely scored nothing -- so take the ceiling from
++        # USERRL_SIM_TIMEOUT rather than leave it where a slow reply trips it.
 +        _t = os.environ.get("USERRL_SIM_TIMEOUT")
 +        if _t:
 +            self.timeout = type(self.timeout)(float(_t))
@@ -473,19 +473,19 @@ index 1069536..0ef1975 100644
                  response_json = await async_model_call(system_prompt, user_prompt, model_config)
                  # process the model call
                  assert response_json is not None and "response" in response_json, f"Invalid response: {response_json}\nMissing response"
-+                # This line was missing, and it is the single largest source of
-+                # bad turns in the whole evaluation. Every other branch assigns
-+                # `response` from response_json before using it (see :255, :280,
-+                # :287, :300) and the SYNC twin in prompts.py does too; only this
-+                # one went straight from the assert to using the name. So the
-+                # passive-elicitation branch raised UnboundLocalError 100% of the
-+                # times it was taken, was swallowed by the except below, and
-+                # returned the canned "I'm sorry, I'm not sure how to respond"
-+                # with default_reward instead. Measured: 38,767 of 39,828
-+                # bad turns -- 96% -- traced to this one omission, across
-+                # every agent and every simulator. TravelGym is 8 of the 15 gyms,
-+                # so its core elicitation mechanic has never worked in the async
-+                # (evaluation) path.
++                # Upstream's async path never assigns `response` in this branch,
++                # though every other branch assigns it from response_json before
++                # use (see :255, :280, :287, :300), as does the sync twin in
++                # prompts.py; this one goes straight from the assert to using the
++                # name. Without the line below the passive-elicitation branch
++                # raises UnboundLocalError, the except clause below swallows it,
++                # and the gym returns the canned "I'm sorry, I'm not sure how to
++                # respond" carrying default_reward instead of the simulator's
++                # reply -- a silent failure that reads as an unhelpful agent
++                # rather than as a missing assignment. Restoring the assignment
++                # makes the async path -- the one evaluation drives TravelGym
++                # through -- behave like the sync one, so the elicitation
++                # mechanic works there too.
 +                response = response_json["response"].strip()
                  conversation_history.append({"role": "agent", "content": action, "note": "The agent's latest utterance is not related to any preference I have, and the topic is off the target for several turns. I will respond naturally and coherently, but also proactively elicit a preference in an implicit and indirect manner."})
                  conversation_history.append({"role": "user", "content": response})
@@ -508,12 +508,12 @@ index 764ef2c..b89302a 100644
 +        if _s:
 +            self.seed = int(_s)
 +
-+        # Simulator-call timeout. The 10s default predates thinking simulators and
-+        # slower hosted routes: a large hosted reasoning model answers in 14-17s
-+        # and a fast hosted model in ~6s, so a 10s ceiling fails the slower one
-+        # on EVERY call in this gym. The failure is silent -- eval.py's rollout()
-+        # catches the TimeoutError and returns [0], which is indistinguishable
-+        # in the results from an agent that genuinely scored nothing.
++        # Simulator-call timeout. The 10s default predates thinking simulators,
++        # whose replies can take longer than that on every call in this gym. The
++        # failure is silent -- eval.py's rollout() catches the TimeoutError and
++        # returns [0], which is indistinguishable in the results from an agent
++        # that genuinely scored nothing -- so take the ceiling from
++        # USERRL_SIM_TIMEOUT rather than leave it where a slow reply trips it.
 +        _t = os.environ.get("USERRL_SIM_TIMEOUT")
 +        if _t:
 +            self.timeout = type(self.timeout)(float(_t))
@@ -532,14 +532,14 @@ index 99f9eb3..814548f 100644
 +def _coerce_model_json(response_text, keys=()):
 +    """Parse model output that is *meant* to be JSON but often is not.
 +
-+    An earlier run still failed 283 times after json.loads+literal_eval were added,
-+    because the model emits shapes that defeat BOTH:
++    json.loads and literal_eval both reject two shapes the model emits often,
++    which is what the extra tiers below exist for:
 +      * curly quotes as delimiters -- {\u2018response\u2019: \u2018...\u2019}
 +        -> "invalid character '\u2019' (U+2019)"
 +      * single-quoted dicts whose values contain apostrophes -- {'response':
 +        'I'm glad'} -> "unterminated string literal" / "invalid syntax"
-+    Every failure was swallowed into a canned reply worth 0.0 reward, so the gym
-+    scored zero while the simulator was answering perfectly well.
++    A parse failure here is silent: the caller substitutes a canned reply
++    carrying 0.0 reward, so the gym scores zero on a turn the simulator answered.
 +
 +    Four tiers, cheapest first. The last one does not parse structure at all --
 +    it pulls the named keys out with a regex, which survives any quoting the

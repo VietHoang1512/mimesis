@@ -60,7 +60,8 @@ def get_teacher_character_prompt(
 
     rubric_lines = "\n".join(f"  • {dim}: {desc}" for dim, desc in _RUBRIC_BRIEF.items())
 
-    # Annotate the character's own lines in the reference
+    # Private coaching block appended to the character's own system prompt;
+    # other characters never see it.
     coaching_section = f"""
 
 ---

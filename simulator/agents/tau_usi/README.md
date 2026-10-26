@@ -16,8 +16,9 @@ first is per-task:
    Dice-Sørensen D1–D4 over pooled feature rows vs the 3 human batches,
    difficulty-binned ECE, survey-based Eval, and `USI = mean(D1..D4, [Eval,]
    (1−ECE)·100)`. Feature extraction uses a single shared definition,
-   `utils.extract_conversation_features`. The output was verified bit-identical
-   to AgentArena's (max abs diff `0.0`) across 33 models × 7 metrics.
+   `utils.extract_conversation_features`. The port reproduces the reference
+   implementation's output, so scores are comparable to the published
+   leaderboard.
 
 ECE difficulty bins are fixed to AgentArena's 31 published baselines
 (`usi_metric.PUBLISHED_BASELINES`), so a new model is scored on the same bins as
@@ -49,10 +50,10 @@ The rollout is split into two functions in `agent.py`:
   termination_reason`). It does not depend on verl or torch: it needs only
   `context.llm_client` (the user simulator), `context.tokenizer`,
   `context.config`, and a reachable runtime service (`RUNTIME_SERVICE_URL`). The
-  fixed agent is matched to AgentArena's `agent_service/tau_agent.py` (gpt-5.2
-  via the Responses API, shared `extract_fn_call` + `tau_env.step`, a greeting
-  turn, ≤64 tool rounds per turn, ≤80 user turns), so only the user simulator
-  varies and USI is comparable. `TAU_USI_AGENT_MODEL` and
+  fixed agent is matched to AgentArena's `agent_service/tau_agent.py` (gpt-5.2,
+  shared `extract_fn_call` + `tau_env.step`, a greeting turn, ≤64 tool rounds
+  per turn, ≤80 user turns), so only the user simulator varies and USI is
+  comparable. `TAU_USI_AGENT_MODEL` and
   `TAU_USI_AGENT_REASONING_EFFORT` set the agent model and its reasoning effort.
 
 - `agent_loop(data, context)` is the verl RL wrapper. It calls
@@ -81,23 +82,6 @@ python -m agents.tau_usi.run_eval --user-sim-model gpt-4o-mini \
     --domains retail:0-9,airline:0-9 --workers 8
 # older models cap completions at 4096 tokens -> add --response-length 4000
 ```
-
-## Replication (2026-03-05)
-
-Run setup: `tau_usi`, agent=`gpt-5.2`, domains=`retail,airline`, tasks=`165`, workers=`50`, timeout=`300s`, checkpoint-resume enabled.
-
-Results from runs of this code:
-
-| Model | D1 Conv. | D2 Info. | D3 Clarif. | D4 React. | Eval | ECE | USI |
-|------|------|------|------|------|------|------|------|
-| gpt-5.2 agent + gpt-5-mini user-sim (reasoning effort=high) | 38.7±6.9 | 76.9±0.7 | 76.1±3.9 | 60.6±3.6 | 73.5±0.5 | 0.267±0.035 | 66.5±1.3 |
-| gpt-5.2 agent + gemini-2.0-flash user-sim | 54.6±2.1 | 88.0±1.2 | 73.4±3.5 | 70.1±2.6 | 73.7±0.8 | 0.168±0.013 | 73.8±1.4 |
-
-Artifacts:
-- `results/tau_usi/20260305_102037_model_gpt-5.2__usersim_gpt-5-mini_task_results.json`
-- `results/tau_usi/20260305_102037_model_gpt-5.2__usersim_gpt-5-mini_aggregate_metrics.json`
-- `results/tau_usi/20260305_135903_model_gpt-5.2__usersim_gemini-2.0-flash_task_results.json`
-- `results/tau_usi/20260305_135903_model_gpt-5.2__usersim_gemini-2.0-flash_aggregate_metrics.json`
 
 ## Reference Numbers
 

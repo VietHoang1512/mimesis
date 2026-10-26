@@ -11,8 +11,7 @@ conda env create -f environment.yml && conda activate mimesis
 pip install -e .
 ```
 
-Then set the four variables in `scripts/env.sh` (no other file contains
-absolute paths):
+Then set the four variables in `scripts/env.sh`:
 
 ```bash
 export MIMESIS_MODEL_DIR=/path/to/checkpoints

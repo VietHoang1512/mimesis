@@ -24,8 +24,8 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 class CausalLMOutputForPPO(CausalLMOutputWithPast):
     log_probs: Optional[torch.FloatTensor] = None
     entropy: Optional[torch.FloatTensor] = None
-    gathered_log_probs: Optional[torch.FloatTensor] = None  # TODO@Weiwei[OPD-TopK] student log probs at top-k positions
-    topk_ids: Optional[torch.LongTensor] = None  # TODO@Weiwei[OPD-TopK] extracted top-k token ids
+    gathered_log_probs: Optional[torch.FloatTensor] = None  # student log probs at the top-k positions
+    topk_ids: Optional[torch.LongTensor] = None  # extracted top-k token ids
 
 
 def forward_base_model(
@@ -115,7 +115,7 @@ def forward_with_torch_backend(
     else:
         raise RuntimeError("To use forward_with_torch_backend, either labels or input_ids must be provided.")
 
-    # TODO@Weiwei[OPD-TopK] gather_ids: use topk kernel to gather log probs at student's top-k positions
+    # When gather_ids is supplied, the top-k kernel also gathers log probs at those positions.
     gather_ids = loss_kwargs.get("gather_ids", None)
 
     if gather_ids is not None:
@@ -139,7 +139,7 @@ def forward_with_torch_backend(
         )
         gathered_log_probs = None
 
-    # TODO@Weiwei[OPD-TopK] extract top-k ids from hidden_states (no extra forward pass)
+    # Top-k ids are extracted from hidden_states, so no extra forward pass is needed.
     topk_ids = None
     extract_topk_k = loss_kwargs.get("extract_topk_k", 0)
     if extract_topk_k > 0:

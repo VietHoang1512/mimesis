@@ -498,7 +498,7 @@ class AgentLoopWorkerBase:
                 )
             )
         outputs = await asyncio.gather(*tasks)
-        # TODO@Weiwei [Done]: flatten list outputs from multi-agent rollouts before postprocess
+        # Multi-agent rollouts return a list per sample, so flatten before postprocessing.
         flat = []
         for o in outputs:
             flat.extend(o) if isinstance(o, list) else flat.append(o)
@@ -538,7 +538,7 @@ class AgentLoopWorkerBase:
                 dataset_config=self.config.data,
             )
             output = await agent_loop.run(sampling_params, **kwargs)
-            # TODO@Weiwei [Done]: handle list[AgentLoopOutput] for multi-agent rollout
+            # A multi-agent rollout yields a list[AgentLoopOutput]; a single-agent one yields a scalar output.
             if isinstance(output, list):
                 return [await self._agent_loop_postprocess(o, **kwargs) for o in output]
             return [await self._agent_loop_postprocess(output, **kwargs)]
@@ -546,7 +546,7 @@ class AgentLoopWorkerBase:
     async def _agent_loop_postprocess(self, output, **kwargs) -> _InternalAgentLoopOutput:
         """Perform post-processing operations on the output of each individual agent loop."""
         output.extra_fields["raw_prompt"] = kwargs["raw_prompt"]
-        # TODO@Weiwei [Done]: propagate uid/gen_uid so they survive into output DataProto non_tensor_batch
+        # Propagate uid/gen_uid so they survive into the output DataProto's non_tensor_batch.
         for key in ("uid", "gen_uid"):
             if key in kwargs and key not in output.extra_fields:
                 output.extra_fields[key] = kwargs[key]

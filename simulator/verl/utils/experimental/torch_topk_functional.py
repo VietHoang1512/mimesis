@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-TODO@Weiwei[OPD-TopK] Fused kernel for top-k OPD (On-Policy Distillation).
+Fused kernel for top-k OPD (On-Policy Distillation).
 
 Extends FusedLinearForPPO with top-k token support:
 - extract_topk: teacher mode, extracts top-k token ids and log probs (no grad)

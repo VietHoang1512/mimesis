@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke test A: the local tau-bench runtime service in isolation (no models, no GPU)."""
+"""Smoke test for the local tau-bench runtime service in isolation (no models, no GPU)."""
 from __future__ import annotations
 
 import json

@@ -30,7 +30,7 @@ def get_character_prompt(
     thoughtless=False,
     other_character_profiles=None,
 ):
-    """Build character system prompt (fixed template variant)."""
+    """Build the system prompt for one character in a scene."""
     if thoughtless:
         output_format = (
             "Your output should include **speech** and **action**. Use (your action) for actions, which others can see."

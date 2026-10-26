@@ -32,7 +32,7 @@ class ABCDSupportAgent:
         self.failures = 0
 
     async def step(self, public_transcript: list[tuple[str, str]]) -> str | None:
-        """Next agent message, or None if the gateway could not be reached."""
+        """Next agent message, or None if the model call fails or returns nothing."""
         messages = [{"role": "system", "content": self.system}]
         for role, text in public_transcript:
             messages.append({"role": "user" if role == "user" else "assistant", "content": text})

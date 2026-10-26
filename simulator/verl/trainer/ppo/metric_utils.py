@@ -118,8 +118,8 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> dict[str,
     prompt_length = response_info["prompt_length"]
     response_length = response_info["response_length"]
 
-    # TODO@Weiwei [Done]: first_seq_mask: first sub-seq per gen_uid; de-dups multi-agent rollouts
-    # TODO@Weiwei: exclude non-primary roles (agent_role set) so metrics reflect primary agent only
+    # first_seq_mask marks the first sub-sequence per gen_uid, de-duplicating multi-agent rollouts.
+    # Rows with agent_role set are non-primary roles and are skipped, so metrics cover the primary agent only.
     gen_uid_arr = batch.non_tensor_batch.get("gen_uid")
     agent_role_arr = batch.non_tensor_batch.get("agent_role")
     if gen_uid_arr is not None:
